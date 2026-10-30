@@ -1,0 +1,423 @@
+<Window x:Class="NetProbe.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:c="clr-namespace:NetProbe.Controls"
+        Title="NetProbe" Width="1200" Height="820" MinWidth="900" MinHeight="620"
+        WindowStartupLocation="CenterScreen" Icon="Assets/netprobe.ico">
+
+    <Window.Resources>
+        <DataTemplate x:Key="KvValue">
+            <TextBlock Text="{Binding Value}" Style="{StaticResource SevText}" TextWrapping="Wrap" />
+        </DataTemplate>
+        <DataTemplate x:Key="KvKey">
+            <TextBlock Text="{Binding Key}" Style="{StaticResource SevText}" Opacity="0.85" />
+        </DataTemplate>
+        <Style x:Key="NavIcon" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="Width" Value="28" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="200" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ===== Header ===== -->
+        <Grid Grid.ColumnSpan="2" Margin="16,10,16,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Image Source="Assets/netprobe.ico" Width="28" Height="28" Margin="0,0,10,0" />
+                <TextBlock Text="NetProbe" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock x:Name="VersionText" FontSize="12" Opacity="0.6" VerticalAlignment="Bottom" Margin="8,0,0,4" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock Text="Adapter" VerticalAlignment="Center" Margin="0,0,10,0" Opacity="0.8" />
+                <ComboBox x:Name="AdapterBox" Width="420" SelectionChanged="AdapterBox_SelectionChanged" />
+                <Button Margin="6,0,0,0" ToolTip="Reload adapters" Click="ReloadAdapters_Click">
+                    <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}" />
+                </Button>
+            </StackPanel>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                <Border x:Name="AdminBadge" CornerRadius="10" Padding="10,3" Margin="0,0,8,0" VerticalAlignment="Center">
+                    <TextBlock x:Name="AdminText" FontSize="12" Foreground="White" FontWeight="SemiBold" />
+                </Border>
+                <Button x:Name="ElevateButton" Content="Restart as Admin" Click="Elevate_Click" Margin="0,0,8,0" />
+                <Button ToolTip="Light / dark theme" Click="Theme_Click">
+                    <TextBlock Text="&#xE793;" FontFamily="{StaticResource IconFont}" />
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- ===== Navigation ===== -->
+        <ListBox x:Name="Nav" Grid.Row="1" Margin="10,4,4,10" SelectionChanged="Nav_SelectionChanged" BorderThickness="0" Background="Transparent">
+            <ListBoxItem Tag="Dashboard" IsSelected="True"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE80F;" /><TextBlock Text="Dashboard" /></StackPanel></ListBoxItem>
+            <ListBoxItem Tag="Link"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE839;" /><TextBlock Text="Link / IP" /></StackPanel></ListBoxItem>
+            <ListBoxItem Tag="Switch"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE968;" /><TextBlock Text="Switch Port" /></StackPanel></ListBoxItem>
+            <ListBoxItem Tag="Tests"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE9D9;" /><TextBlock Text="Connectivity" /></StackPanel></ListBoxItem>
+            <ListBoxItem Tag="Latency"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE9D2;" /><TextBlock Text="Latency" /></StackPanel></ListBoxItem>
+            <ListBoxItem Tag="Tools"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE90F;" /><TextBlock Text="Tools" /></StackPanel></ListBoxItem>
+            <ListBoxItem Tag="Scan"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE721;" /><TextBlock Text="LAN Scan" /></StackPanel></ListBoxItem>
+            <ListBoxItem Tag="Report"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE8A5;" /><TextBlock Text="Report &amp; Upload" /></StackPanel></ListBoxItem>
+            <ListBoxItem Tag="Settings"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE713;" /><TextBlock Text="Settings" /></StackPanel></ListBoxItem>
+        </ListBox>
+
+        <!-- ===== Pages ===== -->
+        <Grid Grid.Row="1" Grid.Column="1" Margin="4,4,14,6">
+
+            <!-- Dashboard -->
+            <Grid x:Name="PageDashboard">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="2*" MinHeight="330" />
+                    <RowDefinition Height="*" MinHeight="170" />
+                </Grid.RowDefinitions>
+                <DockPanel Margin="0,0,0,2">
+                    <TextBlock Text="Dashboard" Style="{StaticResource PageTitle}" DockPanel.Dock="Left" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                        <TextBlock x:Name="DashStatus" VerticalAlignment="Center" Margin="0,0,12,0" Opacity="0.75" />
+                        <Button x:Name="FullCheckBtn" Click="FullCheck_Click" Padding="16,7">
+                            <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE768;" FontFamily="{StaticResource IconFont}" Margin="0,2,8,0" /><TextBlock Text="Run full check" /></StackPanel>
+                        </Button>
+                    </StackPanel>
+                </DockPanel>
+
+                <UniformGrid Grid.Row="1" Columns="2" Rows="2">
+                    <!-- Link card -->
+                    <Border Style="{StaticResource Card}" Padding="0">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="6" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                            <Border x:Name="LinkBar" CornerRadius="8,0,0,8" Background="{StaticResource NeutralBrush}" />
+                            <StackPanel Grid.Column="1" Margin="16,14">
+                                <TextBlock Text="LINK" Style="{StaticResource CardTitle}" />
+                                <TextBlock x:Name="LinkBig" Text="-" Style="{StaticResource CardBig}" />
+                                <TextBlock x:Name="LinkSub" Style="{StaticResource CardSub}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <!-- Network card -->
+                    <Border Style="{StaticResource Card}" Padding="0">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="6" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                            <Border x:Name="NetBar" CornerRadius="8,0,0,8" Background="{StaticResource NeutralBrush}" />
+                            <StackPanel Grid.Column="1" Margin="16,14">
+                                <TextBlock Text="IP / DHCP" Style="{StaticResource CardTitle}" />
+                                <TextBlock x:Name="NetBig" Text="-" Style="{StaticResource CardBig}" />
+                                <TextBlock x:Name="NetSub" Style="{StaticResource CardSub}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <!-- Switch card -->
+                    <Border Style="{StaticResource Card}" Padding="0">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="6" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                            <Border x:Name="SwBar" CornerRadius="8,0,0,8" Background="{StaticResource NeutralBrush}" />
+                            <Grid Grid.Column="1" Margin="16,14">
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                <TextBlock Text="SWITCH PORT" Style="{StaticResource CardTitle}" />
+                                <TextBlock Grid.Row="1" x:Name="SwBig" Text="Not discovered" Style="{StaticResource CardBig}" />
+                                <TextBlock Grid.Row="2" x:Name="SwSub" Style="{StaticResource CardSub}" />
+                                <StackPanel Grid.Row="3" Orientation="Horizontal">
+                                    <Button x:Name="DashDiscoverBtn" Content="Discover" Click="Discover_Click" />
+                                    <ProgressBar x:Name="DashDiscoverProgress" Width="140" Height="4" Margin="12,0,0,0" VerticalAlignment="Center" Visibility="Collapsed" />
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+                    </Border>
+                    <!-- Internet card -->
+                    <Border Style="{StaticResource Card}" Padding="0">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="6" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                            <Border x:Name="InetBar" CornerRadius="8,0,0,8" Background="{StaticResource NeutralBrush}" />
+                            <Grid Grid.Column="1" Margin="16,14">
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                <TextBlock Text="INTERNET" Style="{StaticResource CardTitle}" />
+                                <TextBlock Grid.Row="1" x:Name="InetBig" Text="Not tested" Style="{StaticResource CardBig}" />
+                                <TextBlock Grid.Row="2" x:Name="InetSub" Style="{StaticResource CardSub}" />
+                                <StackPanel Grid.Row="3" Orientation="Horizontal">
+                                    <Button x:Name="DashTestBtn" Content="Run tests" Click="RunTests_Click" />
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </UniformGrid>
+
+                <Border Grid.Row="2" Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition /></Grid.RowDefinitions>
+                        <DockPanel>
+                            <TextBlock Text="LIVE LATENCY" Style="{StaticResource CardTitle}" />
+                            <TextBlock x:Name="DashLatencyStats" HorizontalAlignment="Right" FontSize="12" Opacity="0.75" />
+                        </DockPanel>
+                        <c:LatencyGraph x:Name="DashGraph" Grid.Row="1" />
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- Link / IP -->
+            <DockPanel x:Name="PageLink" Visibility="Collapsed">
+                <TextBlock DockPanel.Dock="Top" Text="Link / IP" Style="{StaticResource PageTitle}" />
+                <WrapPanel DockPanel.Dock="Top" Style="{StaticResource Toolbar}">
+                    <Button Content="Refresh" Click="Refresh_Click" Margin="4" />
+                    <Button Content="Renew DHCP" Click="RenewDhcp_Click" Margin="4" />
+                    <TextBlock x:Name="LinkPageStatus" VerticalAlignment="Center" Margin="10,0" Opacity="0.75" />
+                </WrapPanel>
+                <Border Style="{StaticResource Card}" Padding="4">
+                    <ListView x:Name="LinkList" BorderThickness="0">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="Property" Width="210" CellTemplate="{StaticResource KvKey}" />
+                                <GridViewColumn Header="Value" Width="680" CellTemplate="{StaticResource KvValue}" />
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                </Border>
+            </DockPanel>
+
+            <!-- Switch port -->
+            <DockPanel x:Name="PageSwitch" Visibility="Collapsed">
+                <TextBlock DockPanel.Dock="Top" Text="Switch Port (LLDP / CDP)" Style="{StaticResource PageTitle}" />
+                <WrapPanel DockPanel.Dock="Top" Style="{StaticResource Toolbar}">
+                    <TextBlock Text="Listen for" VerticalAlignment="Center" Margin="4,0" />
+                    <TextBox x:Name="DiscoverSeconds" Width="64" Margin="4" Text="65" />
+                    <TextBlock Text="seconds" VerticalAlignment="Center" Margin="4,0,12,0" />
+                    <Button x:Name="DiscoverBtn" Content="Discover switch port" Click="Discover_Click" Margin="4" />
+                    <Button x:Name="StopDiscoverBtn" Content="Stop early" Click="StopDiscover_Click" Margin="4" IsEnabled="False" />
+                    <Button Content="Open capture file..." Click="OpenCapture_Click" Margin="4" />
+                </WrapPanel>
+                <Border DockPanel.Dock="Top" Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock x:Name="SwitchSummary" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock x:Name="SwitchHint" Margin="0,6,0,0" Opacity="0.75" TextWrapping="Wrap" />
+                        <ProgressBar x:Name="DiscoverProgress" Height="4" Margin="0,10,0,0" Visibility="Collapsed" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Card}" Padding="4">
+                    <ListView x:Name="SwitchList" BorderThickness="0">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="Field" Width="220" CellTemplate="{StaticResource KvKey}" />
+                                <GridViewColumn Header="Value" Width="670" CellTemplate="{StaticResource KvValue}" />
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                </Border>
+            </DockPanel>
+
+            <!-- Connectivity tests -->
+            <DockPanel x:Name="PageTests" Visibility="Collapsed">
+                <TextBlock DockPanel.Dock="Top" Text="Connectivity Tests" Style="{StaticResource PageTitle}" />
+                <WrapPanel DockPanel.Dock="Top" Style="{StaticResource Toolbar}">
+                    <Button x:Name="RunTestsBtn" Content="Run all tests" Click="RunTests_Click" Margin="4" />
+                    <TextBlock x:Name="TestsStatus" Text="Checks gateway, DNS, internet reachability, captive portal and public IP for the selected adapter."
+                               VerticalAlignment="Center" Margin="10,0" Opacity="0.75" />
+                </WrapPanel>
+                <Border Style="{StaticResource Card}" Padding="4">
+                    <ListView x:Name="TestsList" BorderThickness="0">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="Result" Width="80">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate><TextBlock Text="{Binding Badge}" FontWeight="Bold" Style="{StaticResource SevText}" /></DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Test" Width="240" DisplayMemberBinding="{Binding Name}" />
+                                <GridViewColumn Header="Detail" Width="580" DisplayMemberBinding="{Binding Detail}" />
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                </Border>
+            </DockPanel>
+
+            <!-- Latency -->
+            <DockPanel x:Name="PageLatency" Visibility="Collapsed">
+                <TextBlock DockPanel.Dock="Top" Text="Latency" Style="{StaticResource PageTitle}" />
+                <WrapPanel DockPanel.Dock="Top" Style="{StaticResource Toolbar}">
+                    <TextBlock Text="Gateway" VerticalAlignment="Center" Margin="4,0" />
+                    <TextBox x:Name="LatGwBox" Width="150" Margin="4" />
+                    <TextBlock Text="Internet" VerticalAlignment="Center" Margin="12,0,4,0" />
+                    <TextBox x:Name="LatInetBox" Width="150" Margin="4" Text="1.1.1.1" />
+                    <Button Content="Apply" Click="LatApply_Click" Margin="4" />
+                    <Button x:Name="LatPauseBtn" Content="Pause" Click="LatPause_Click" Margin="4" />
+                    <Button Content="Clear" Click="LatClear_Click" Margin="4" />
+                </WrapPanel>
+                <Border DockPanel.Dock="Bottom" Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock x:Name="LatGwStats" FontFamily="Consolas" Foreground="#3B82F6" />
+                        <TextBlock x:Name="LatInetStats" FontFamily="Consolas" Foreground="#F59E0B" Margin="0,4,0,0" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Card}">
+                    <c:LatencyGraph x:Name="BigGraph" />
+                </Border>
+            </DockPanel>
+
+            <!-- Tools -->
+            <DockPanel x:Name="PageTools" Visibility="Collapsed">
+                <TextBlock DockPanel.Dock="Top" Text="Tools" Style="{StaticResource PageTitle}" />
+                <WrapPanel DockPanel.Dock="Top" Style="{StaticResource Toolbar}">
+                    <TextBlock Text="Host" VerticalAlignment="Center" Margin="4,0" />
+                    <TextBox x:Name="ToolHost" Width="220" Margin="4" Text="8.8.8.8" />
+                    <TextBlock Text="Count" VerticalAlignment="Center" Margin="12,0,4,0" />
+                    <TextBox x:Name="ToolCount" Width="60" Margin="4" Text="10" ToolTip="0 = until Stop" />
+                    <TextBlock Text="Ports" VerticalAlignment="Center" Margin="12,0,4,0" />
+                    <TextBox x:Name="ToolPorts" Width="300" Margin="4" Text="21,22,23,25,53,80,135,139,443,445,3389,8080,8443,9100" />
+                </WrapPanel>
+                <WrapPanel DockPanel.Dock="Top" Style="{StaticResource Toolbar}">
+                    <Button Content="Ping" Click="Ping_Click" Margin="4" />
+                    <Button Content="Traceroute" Click="Trace_Click" Margin="4" />
+                    <Button Content="DNS lookup" Click="Dns_Click" Margin="4" />
+                    <Button Content="Port check" Click="Ports_Click" Margin="4" />
+                    <Button Content="Ping gateway" Click="PingGw_Click" Margin="4" />
+                    <Button x:Name="ToolStopBtn" Content="Stop" Click="ToolStop_Click" Margin="4" IsEnabled="False" />
+                    <Button Content="Clear" Click="ToolClear_Click" Margin="4" />
+                </WrapPanel>
+                <Border Style="{StaticResource Card}" Padding="2">
+                    <TextBox x:Name="ToolOut" IsReadOnly="True" FontFamily="Cascadia Mono, Consolas" FontSize="13"
+                             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" TextWrapping="NoWrap"
+                             AcceptsReturn="True" BorderThickness="0" Background="Transparent" />
+                </Border>
+            </DockPanel>
+
+            <!-- LAN scan -->
+            <DockPanel x:Name="PageScan" Visibility="Collapsed">
+                <TextBlock DockPanel.Dock="Top" Text="LAN Scan" Style="{StaticResource PageTitle}" />
+                <WrapPanel DockPanel.Dock="Top" Style="{StaticResource Toolbar}">
+                    <TextBlock Text="Subnet" VerticalAlignment="Center" Margin="4,0" />
+                    <TextBox x:Name="ScanCidr" Width="170" Margin="4" />
+                    <Button x:Name="ScanBtn" Content="Scan" Click="Scan_Click" Margin="4" />
+                    <Button x:Name="ScanStopBtn" Content="Stop" Click="ScanStop_Click" Margin="4" IsEnabled="False" />
+                    <TextBlock x:Name="ScanStatus" Text="Finds devices with ping + ARP (works even if they block ping). Double-click a device to open it in Tools."
+                               VerticalAlignment="Center" Margin="10,0" Opacity="0.75" />
+                </WrapPanel>
+                <Border Style="{StaticResource Card}" Padding="4">
+                    <ListView x:Name="ScanList" BorderThickness="0" MouseDoubleClick="ScanList_DoubleClick">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="IP address" Width="140" DisplayMemberBinding="{Binding IP}" />
+                                <GridViewColumn Header="MAC address" Width="160" DisplayMemberBinding="{Binding Mac}" />
+                                <GridViewColumn Header="Hostname" Width="300" DisplayMemberBinding="{Binding Name}" />
+                                <GridViewColumn Header="Ping" Width="150" DisplayMemberBinding="{Binding Ping}" />
+                                <GridViewColumn Header="Note" Width="170" DisplayMemberBinding="{Binding Note}" />
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                </Border>
+            </DockPanel>
+
+            <!-- Report & upload -->
+            <ScrollViewer x:Name="PageReport" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="Report &amp; Upload" Style="{StaticResource PageTitle}" />
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="REPORT" Style="{StaticResource CardTitle}" />
+                            <TextBlock Text="Saves everything NetProbe has gathered (link, switch port, tests, latency, LAN scan)." Opacity="0.8" Margin="0,0,0,10" TextWrapping="Wrap" />
+                            <WrapPanel>
+                                <TextBlock Text="Tech" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBox x:Name="TechBox" Width="180" Margin="0,0,16,0" />
+                                <TextBlock Text="Site / location" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBox x:Name="SiteBox" Width="260" />
+                            </WrapPanel>
+                            <WrapPanel Margin="0,12,0,0">
+                                <Button Content="Save PDF..." Click="SavePdf_Click" Margin="0,0,8,0" />
+                                <Button Content="Save HTML..." Click="SaveHtml_Click" Margin="0,0,8,0" />
+                                <Button Content="Save JSON..." Click="SaveJson_Click" Margin="0,0,8,0" />
+                                <Button Content="Copy summary" Click="CopySummary_Click" Margin="0,0,8,0" />
+                            </WrapPanel>
+                            <TextBlock x:Name="ReportStatus" Margin="0,10,0,0" Opacity="0.8" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="REMOTE UPLOAD (OPTIONAL)" Style="{StaticResource CardTitle}" />
+                            <TextBlock Opacity="0.8" TextWrapping="Wrap" Margin="0,0,0,10"
+                                       Text="Sends the JSON report to your own web portal so remote people can see the results. Leave the URL empty to keep uploading off. The portal receives an HTTPS POST with the API key as a Bearer token." />
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="120" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions><RowDefinition /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
+                                <TextBlock Text="Upload URL" VerticalAlignment="Center" />
+                                <TextBox x:Name="UploadUrlBox" Grid.Column="1" Margin="0,4" />
+                                <TextBlock Grid.Row="1" Text="API key" VerticalAlignment="Center" />
+                                <PasswordBox x:Name="ApiKeyBox" Grid.Row="1" Grid.Column="1" Margin="0,4" />
+                                <CheckBox x:Name="AutoUploadBox" Grid.Row="2" Grid.Column="1" Content="Upload automatically after each full check" Margin="0,6" />
+                            </Grid>
+                            <WrapPanel Margin="0,8,0,0">
+                                <Button Content="Save upload settings" Click="SaveUpload_Click" Margin="0,0,8,0" />
+                                <Button x:Name="UploadBtn" Content="Upload now" Click="Upload_Click" />
+                            </WrapPanel>
+                            <TextBlock x:Name="UploadStatus" Margin="0,10,0,0" Opacity="0.8" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Settings -->
+            <ScrollViewer x:Name="PageSettings" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="Settings" Style="{StaticResource PageTitle}" />
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="APPEARANCE" Style="{StaticResource CardTitle}" />
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Theme" VerticalAlignment="Center" Width="120" />
+                                <ComboBox x:Name="ThemeBox" Width="160" SelectionChanged="ThemeBox_SelectionChanged">
+                                    <ComboBoxItem Content="System" />
+                                    <ComboBoxItem Content="Light" />
+                                    <ComboBoxItem Content="Dark" />
+                                </ComboBox>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="WHEN A CABLE IS PLUGGED IN" Style="{StaticResource CardTitle}" />
+                            <CheckBox x:Name="AutoDiscoverBox" Content="Automatically run tests and discover the switch port (wired adapters)" Checked="SettingsChanged" Unchecked="SettingsChanged" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="UPDATES" Style="{StaticResource CardTitle}" />
+                            <TextBlock Opacity="0.8" TextWrapping="Wrap" Margin="0,0,0,10"
+                                       Text="NetProbe can check GitHub Releases for a newer version on launch and offer to install it. Enter the repository as owner/name (e.g. yourname/NetProbe). Leave empty to turn update checks off." />
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="120" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                <TextBlock Text="GitHub repo" VerticalAlignment="Center" />
+                                <TextBox x:Name="RepoBox" Grid.Column="1" Margin="0,4" />
+                            </Grid>
+                            <CheckBox x:Name="CheckUpdatesBox" Content="Check for updates when NetProbe starts" Margin="120,6,0,0" />
+                            <WrapPanel Margin="120,8,0,0">
+                                <Button Content="Save" Click="SaveUpdates_Click" Margin="0,0,8,0" />
+                                <Button Content="Check now" Click="CheckUpdates_Click" />
+                            </WrapPanel>
+                            <TextBlock x:Name="UpdateStatus" Margin="120,10,0,0" Opacity="0.8" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="ABOUT" Style="{StaticResource CardTitle}" />
+                            <TextBlock x:Name="AboutText" TextWrapping="Wrap" LineHeight="22" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- ===== Status bar ===== -->
+        <Border Grid.Row="2" Grid.ColumnSpan="2" Padding="16,6" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
+            <TextBlock x:Name="StatusText" Opacity="0.8" />
+        </Border>
+    </Grid>
+</Window>

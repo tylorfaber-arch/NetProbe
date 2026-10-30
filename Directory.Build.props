@@ -1,0 +1,7 @@
+<Project>
+  <!-- Keep bin/obj out of OneDrive so build output doesn't sync -->
+  <PropertyGroup>
+    <BaseOutputPath>$(LOCALAPPDATA)\NetProbeBuild\bin\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(LOCALAPPDATA)\NetProbeBuild\obj\</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>
