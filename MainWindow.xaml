@@ -70,7 +70,7 @@
             <ListBoxItem Tag="Latency"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE9D2;" /><TextBlock Text="Latency" /></StackPanel></ListBoxItem>
             <ListBoxItem Tag="Tools"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE90F;" /><TextBlock Text="Tools" /></StackPanel></ListBoxItem>
             <ListBoxItem Tag="Scan"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE721;" /><TextBlock Text="LAN Scan" /></StackPanel></ListBoxItem>
-            <ListBoxItem Tag="Report"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE8A5;" /><TextBlock Text="Report &amp; Upload" /></StackPanel></ListBoxItem>
+            <ListBoxItem Tag="Report"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE8A5;" /><TextBlock x:Name="ReportNavText" Text="Report &amp; Upload" /></StackPanel></ListBoxItem>
             <ListBoxItem Tag="Settings"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE713;" /><TextBlock Text="Settings" /></StackPanel></ListBoxItem>
         </ListBox>
 
@@ -323,7 +323,7 @@
             <!-- Report & upload -->
             <ScrollViewer x:Name="PageReport" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
                 <StackPanel>
-                    <TextBlock Text="Report &amp; Upload" Style="{StaticResource PageTitle}" />
+                    <TextBlock x:Name="ReportPageTitle" Text="Report &amp; Upload" Style="{StaticResource PageTitle}" />
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="REPORT" Style="{StaticResource CardTitle}" />
@@ -343,7 +343,7 @@
                             <TextBlock x:Name="ReportStatus" Margin="0,10,0,0" Opacity="0.8" TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
-                    <Border Style="{StaticResource Card}">
+                    <Border x:Name="UploadCard" Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="REMOTE UPLOAD (OPTIONAL)" Style="{StaticResource CardTitle}" />
                             <TextBlock Opacity="0.8" TextWrapping="Wrap" Margin="0,0,0,10"
@@ -359,9 +359,13 @@
                             </Grid>
                             <WrapPanel Margin="0,8,0,0">
                                 <Button Content="Save upload settings" Click="SaveUpload_Click" Margin="0,0,8,0" />
+                                <Button x:Name="TestUploadBtn" Content="Test connection" Click="TestUpload_Click" Margin="0,0,8,0" />
                                 <Button x:Name="UploadBtn" Content="Upload now" Click="Upload_Click" />
                             </WrapPanel>
                             <TextBlock x:Name="UploadStatus" Margin="0,10,0,0" Opacity="0.8" TextWrapping="Wrap" />
+                            <TextBlock x:Name="PortalLinkText" Margin="0,4,0,0" Visibility="Collapsed">
+                                <Hyperlink x:Name="PortalLink" RequestNavigate="PortalLink_RequestNavigate">View this report in the portal</Hyperlink>
+                            </TextBlock>
                         </StackPanel>
                     </Border>
                 </StackPanel>

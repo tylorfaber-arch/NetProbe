@@ -66,6 +66,11 @@ public partial class MainWindow : Window
             $"Last capture file: {LinkDiscovery.LastCapture}\n" +
             $"Settings: %APPDATA%\\NetProbe\\settings.json";
         UpdateUploadButton();
+        if (!App.RemoteUploadEnabled)
+        {
+            UploadCard.Visibility = Visibility.Collapsed;
+            ReportNavText.Text = ReportPageTitle.Text = "Report";
+        }
 
         ScanCidr.PreviewKeyDown += (_, _) => _scanEdited = true;
         _refreshTimer.Tick += async (_, _) => await RefreshAdapterAsync();
@@ -381,9 +386,14 @@ public partial class MainWindow : Window
             if (App.IsAdmin && !_discovering) tasks.Add(DiscoverAsync(auto: true));
             await Task.WhenAll(tasks);
             DashStatus.Text = $"Full check finished {DateTime.Now:t}";
-            if (_settings.AutoUpload && !string.IsNullOrWhiteSpace(_settings.UploadUrl))
+            if (App.RemoteUploadEnabled && _settings.AutoUpload && !string.IsNullOrWhiteSpace(_settings.UploadUrl))
             {
-                try { DashStatus.Text = await Uploader.UploadAsync(_settings, BuildReport()); }
+                try
+                {
+                    var res = await Uploader.UploadAsync(_settings, BuildReport());
+                    DashStatus.Text = res.Message;
+                    ShowPortalLink(res.Url);
+                }
                 catch (Exception ex) { DashStatus.Text = "Upload failed: " + ex.Message; }
             }
         }
@@ -776,8 +786,37 @@ public partial class MainWindow : Window
     private async void Upload_Click(object sender, RoutedEventArgs e)
     {
         UploadStatus.Text = "Uploading...";
-        try { UploadStatus.Text = await Uploader.UploadAsync(_settings, BuildReport()); }
+        ShowPortalLink(null);
+        try
+        {
+            var res = await Uploader.UploadAsync(_settings, BuildReport());
+            UploadStatus.Text = res.Message;
+            ShowPortalLink(res.Url);
+        }
         catch (Exception ex) { UploadStatus.Text = "Upload failed: " + ex.Message; }
+    }
+
+    private async void TestUpload_Click(object sender, RoutedEventArgs e)
+    {
+        // test what's typed in, even if not saved yet
+        var s = new Settings { UploadUrl = UploadUrlBox.Text.Trim(), ApiKey = ApiKeyBox.Password };
+        TestUploadBtn.IsEnabled = false;
+        UploadStatus.Text = "Testing connection...";
+        try { UploadStatus.Text = await Uploader.TestAsync(s); }
+        catch (Exception ex) { UploadStatus.Text = "Connection failed: " + ex.Message; }
+        finally { TestUploadBtn.IsEnabled = true; }
+    }
+
+    private void ShowPortalLink(string? url)
+    {
+        PortalLinkText.Visibility = url != null ? Visibility.Visible : Visibility.Collapsed;
+        if (url != null) PortalLink.NavigateUri = new Uri(url);
+    }
+
+    private void PortalLink_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+    {
+        try { Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true }); } catch { }
+        e.Handled = true;
     }
 
     // ================================================================== updates

@@ -16,6 +16,9 @@ public partial class App : Application
 
     public static Settings Settings { get; } = Settings.Load();
 
+    // Remote upload to the web portal: hidden until the portal is live. Set to true to show it again.
+    public static bool RemoteUploadEnabled => false;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);

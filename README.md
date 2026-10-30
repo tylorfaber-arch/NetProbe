@@ -40,7 +40,6 @@
 | **Tools** | Ping, traceroute, DNS lookup, TCP port check |
 | **LAN scan** | Finds devices on the subnet with MAC and hostname |
 | **Reports** | PDF, HTML or JSON, or copy a short summary for a ticket |
-| **Remote upload** | Optional: send results to your own web portal |
 | **Light / dark** | Follows your Windows theme |
 
 NetProbe asks for Administrator when it starts. Choose **No** to run in limited mode &mdash; everything except switch port discovery still works.
@@ -71,6 +70,11 @@ Installed copies find the new release on their next launch and offer to install 
 
 </details>
 
+<!-- Remote upload is hidden in the app (App.RemoteUploadEnabled = false) until the portal is live.
+     When it is, put this row back in the features table:
+| **Remote upload** | Optional: send results to the NetProbe web portal |
+     and remove this comment's start and end lines so the section below shows again.
+
 <details>
 <summary><b>Upload format (for a remote portal)</b></summary>
 
@@ -87,7 +91,16 @@ With an upload URL set, NetProbe sends `POST <url>` with `Authorization: Bearer 
 }
 ```
 
+Any 2xx response counts as success. Optional extras a portal can support:
+
+* Respond with JSON containing `"url": "https://..."` and NetProbe shows a **View this report in the portal** link.
+* Answer `GET <url>` (same Bearer key) for **Test connection**. A JSON reply with `"org"` (and optionally
+  `"uploadsThisMonth"` / `"monthlyLimit"`) shows "Connected to <org>"; 401/403 shows "API key rejected".
+* On errors, a JSON body with `"error": "message"` is shown to the tech.
+
 </details>
+-->
+
 
 <details>
 <summary><b>Project layout</b></summary>

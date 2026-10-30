@@ -148,20 +148,64 @@ public static class Uploader
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
 
-    public static async Task<string> UploadAsync(Settings s, ReportData r)
+    /// <summary>Message for the status line, plus the report's web page if the portal returned one.</summary>
+    public sealed record Result(string Message, string? Url);
+
+    public static async Task<Result> UploadAsync(Settings s, ReportData r)
     {
         if (string.IsNullOrWhiteSpace(s.UploadUrl)) throw new InvalidOperationException("No upload URL set (Settings).");
-        using var req = new HttpRequestMessage(HttpMethod.Post, s.UploadUrl)
-        {
-            Content = new StringContent(r.ToJson(), Encoding.UTF8, "application/json")
-        };
-        if (!string.IsNullOrWhiteSpace(s.ApiKey)) req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", s.ApiKey);
-        req.Headers.UserAgent.ParseAdd($"NetProbe/{App.Version}");
+        using var req = Request(HttpMethod.Post, s);
+        req.Content = new StringContent(r.ToJson(), Encoding.UTF8, "application/json");
         using var resp = await Http.SendAsync(req);
         var body = await resp.Content.ReadAsStringAsync();
-        if (!resp.IsSuccessStatusCode) throw new InvalidOperationException($"Server returned HTTP {(int)resp.StatusCode}: {body[..Math.Min(body.Length, 200)]}");
-        return $"Uploaded (HTTP {(int)resp.StatusCode})";
+        if (!resp.IsSuccessStatusCode) throw new InvalidOperationException($"Server returned HTTP {(int)resp.StatusCode}: {ErrorText(body)}");
+        // NetProbe Portal answers {"ok":true,"id":"...","url":"https://..."}; other servers may return anything.
+        var url = JsonString(body, "url");
+        return new($"Uploaded {DateTime.Now:t} (HTTP {(int)resp.StatusCode})", Uri.TryCreate(url, UriKind.Absolute, out var u) && u.Scheme is "https" or "http" ? url : null);
     }
+
+    /// <summary>GET on the upload URL with the API key. NetProbe Portal answers with the org name and usage.</summary>
+    public static async Task<string> TestAsync(Settings s)
+    {
+        if (string.IsNullOrWhiteSpace(s.UploadUrl)) throw new InvalidOperationException("Enter an upload URL first.");
+        using var req = Request(HttpMethod.Get, s);
+        using var resp = await Http.SendAsync(req);
+        var body = await resp.Content.ReadAsStringAsync();
+        var code = (int)resp.StatusCode;
+        if (resp.IsSuccessStatusCode)
+            return JsonString(body, "org") is { } org
+                ? $"Connected to {org}" + (JsonNumber(body, "uploadsThisMonth") is { } n && JsonNumber(body, "monthlyLimit") is { } max ? $" - {n} of {max} uploads used this month." : ".")
+                : $"Server reachable (HTTP {code}).";
+        return code switch
+        {
+            401 or 403 => $"API key rejected (HTTP {code}): {ErrorText(body)}",
+            404 or 405 => $"Server reachable, but it doesn't support a connection test (HTTP {code}). Upload now may still work.",
+            _ => $"Server returned HTTP {code}: {ErrorText(body)}"
+        };
+    }
+
+    private static HttpRequestMessage Request(HttpMethod method, Settings s)
+    {
+        var req = new HttpRequestMessage(method, s.UploadUrl.Trim());
+        if (!string.IsNullOrWhiteSpace(s.ApiKey)) req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", s.ApiKey.Trim());
+        req.Headers.UserAgent.ParseAdd($"NetProbe/{App.Version}");
+        return req;
+    }
+
+    private static string ErrorText(string body) => JsonString(body, "error") ?? body[..Math.Min(body.Length, 200)];
+
+    private static JsonElement? JsonProp(string body, string name)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            return doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty(name, out var v) ? v.Clone() : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static string? JsonString(string body, string name) => JsonProp(body, name) is { ValueKind: JsonValueKind.String } v ? v.GetString() : null;
+    private static long? JsonNumber(string body, string name) => JsonProp(body, name) is { ValueKind: JsonValueKind.Number } v ? v.GetInt64() : null;
 }
 
 /// <summary>Checks GitHub Releases for a newer version and runs the new installer.</summary>
