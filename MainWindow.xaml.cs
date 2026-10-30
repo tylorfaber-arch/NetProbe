@@ -30,7 +30,8 @@ public partial class MainWindow : Window
     private bool? _wasUp;
     private DateTime _linkUpAt;
     private DateTime? _lastDiscover, _lastTests;
-    private int _discoverRemaining;
+    private int _discoverRemaining, _testTotal;
+    private string? _currentTest;
 
     private Brush B(string key) => (Brush)FindResource(key);
 
@@ -309,8 +310,9 @@ public partial class MainWindow : Window
         if (_testing)
         {
             SetBar(InetBar, "InfoBrush");
-            InetBig.Text = "Testing...";
-            lines.Add($"{_tests.Count} checks done");
+            InetBig.Text = $"Testing...  {_tests.Count} / {_testTotal}";
+            foreach (var t in _tests.TakeLast(_currentTest != null ? 3 : 4)) lines.Add(ResultLine(t));
+            if (_currentTest != null) lines.Add($"▸  {_currentTest}...");
         }
         else if (_tests.Count == 0)
         {
@@ -326,12 +328,24 @@ public partial class MainWindow : Window
             SetBar(InetBar, fail + warn == 0 ? "PassBrush" : online ? "WarnBrush" : "FailBrush");
             int passed = _tests.Count(t => t.Sev == Sev.Pass);
             lines.Add($"{passed} of {_tests.Count(t => t.Sev != Sev.Info)} checks passed" + (_lastTests is { } lt ? $" · {lt:t}" : ""));
-            foreach (var t in _tests.Where(t => t.Sev is Sev.Fail or Sev.Warn).Take(3)) lines.Add($"{t.Badge}: {t.Name}");
+            foreach (var t in _tests.Where(t => t.Sev is Sev.Fail or Sev.Warn).Take(3)) lines.Add(ResultLine(t));
             if (_tests.FirstOrDefault(t => t.Name == "Public IP" && t.Sev == Sev.Info) is { } pip) lines.Add("Public IP " + pip.Detail);
         }
         InetSub.Text = string.Join("\n", lines);
         DashTestBtn.IsEnabled = !_testing;
+        DashTestProgress.Visibility = _testing ? Visibility.Visible : Visibility.Collapsed;
+        DashTestProgress.Maximum = Math.Max(1, _testTotal);
+        DashTestProgress.Value = _tests.Count;
     }
+
+    private static string ResultLine(TestResult t)
+    {
+        var icon = t.Sev switch { Sev.Pass => "✓", Sev.Fail => "✗", Sev.Warn => "!", _ => "•" };
+        var detail = t.Detail.Length > 42 ? t.Detail[..42] + "…" : t.Detail;
+        return $"{icon}  {t.Name}  —  {detail}";
+    }
+
+    private void TestDetails_Click(object sender, RoutedEventArgs e) => Nav.SelectedIndex = 3;
 
     private void OnLatency()
     {
@@ -525,15 +539,25 @@ public partial class MainWindow : Window
         if (_testing || _snap == null) return;
         _testing = true;
         _tests.Clear();
+        _testTotal = ConnectivityTests.CountFor(_snap.Dns.Count);
         var rows = new ObservableCollection<TestResult>();
         TestsList.ItemsSource = rows;
         RunTestsBtn.IsEnabled = false;
-        TestsStatus.Text = "Running...";
+        TestsStatus.Text = "Starting...";
         UpdateDashboard();
+        var running = new Progress<string>(name =>
+        {
+            if (!_testing) return;
+            _currentTest = name;
+            TestsStatus.Text = $"Running {_tests.Count + 1} of {_testTotal}:  {name}...";
+            Status(TestsStatus.Text);
+            UpdateDashboard();
+        });
         try
         {
-            await foreach (var r in ConnectivityTests.RunAsync(_snap.Gateway, _snap.Dns))
+            await foreach (var r in ConnectivityTests.RunAsync(_snap.Gateway, _snap.Dns, running))
             {
+                _currentTest = null;
                 _tests.Add(r);
                 rows.Add(r);
                 UpdateDashboard();
@@ -544,6 +568,7 @@ public partial class MainWindow : Window
         finally
         {
             _testing = false;
+            _currentTest = null;
             RunTestsBtn.IsEnabled = true;
             int fail = _tests.Count(t => t.Sev == Sev.Fail);
             TestsStatus.Text = fail == 0 ? $"All checks passed ({DateTime.Now:T})." : $"{fail} check(s) failed ({DateTime.Now:T}).";
@@ -597,6 +622,7 @@ public partial class MainWindow : Window
     private async void Ping_Click(object sender, RoutedEventArgs e) => await RunTool(ct => NetTools.PingAsync(Host, Count, ct), $"Ping {Host}" + (Count <= 0 ? " (until Stop)" : ""));
     private async void Trace_Click(object sender, RoutedEventArgs e) => await RunTool(ct => NetTools.TraceAsync(Host, ct), $"Traceroute {Host}");
     private async void Dns_Click(object sender, RoutedEventArgs e) => await RunTool(ct => NetTools.DnsLookupAsync(Host, ct), $"DNS lookup {Host}");
+    private async void Whois_Click(object sender, RoutedEventArgs e) => await RunTool(ct => Whois.LookupAsync(Host, ct), $"WHOIS {Host}");
     private async void Ports_Click(object sender, RoutedEventArgs e) => await RunTool(ct => NetTools.PortCheckAsync(Host, ToolPorts.Text, ct), $"TCP ports on {Host}");
 
     private async void PingGw_Click(object sender, RoutedEventArgs e)
@@ -815,9 +841,21 @@ public partial class MainWindow : Window
             _lastDiscover = DateTime.Now;
             ShowNeighbors();
         }
-        await RunTestsAsync();
-        await Task.Delay(6000);
         var prefix = Environment.GetEnvironmentVariable("NETPROBE_THEME") ?? "default";
+        while (_testing) await Task.Delay(100);
+        var trace = new List<string> { $"before: testing={_testing} snap={_snap != null}" };
+        var tests = RunTestsAsync();
+        bool shot = false;
+        while (!tests.IsCompleted)
+        {
+            var line = $"{InetBig.Text} | {InetSub.Text.Replace("\n", " / ")}";
+            if (trace[^1] != line) trace.Add(line);
+            if (!shot && _tests.Count >= 3) { SavePng(Path.Combine(dir, $"{prefix}-testing.png")); shot = true; }
+            await Task.Delay(50);
+        }
+        await tests;
+        File.WriteAllLines(Path.Combine(dir, $"{prefix}-testing-trace.txt"), trace);
+        await Task.Delay(6000);
         var html = ReportWriter.ToHtml(BuildReport());
         File.WriteAllText(Path.Combine(dir, $"{prefix}-report.html"), html);
         try { await ReportWriter.SavePdfAsync(html, Path.Combine(dir, $"{prefix}-report.pdf")); }
@@ -825,7 +863,12 @@ public partial class MainWindow : Window
         for (int i = 0; i < Nav.Items.Count; i++)
         {
             Nav.SelectedIndex = i;
-            if (i == 5) { ToolHost.Text = "8.8.8.8"; await RunTool(ct => NetTools.PingAsync("8.8.8.8", 3, ct), "Ping 8.8.8.8"); }
+            if (i == 5)
+            {
+                ToolHost.Text = "www.google.com";
+                await RunTool(ct => Whois.LookupAsync("www.google.com", ct), "WHOIS www.google.com");
+                await RunTool(ct => Whois.LookupAsync("8.8.8.8", ct), "WHOIS 8.8.8.8");
+            }
             await Task.Delay(400);
             SavePng(Path.Combine(dir, $"{prefix}-{i}-{((ListBoxItem)Nav.Items[i]).Tag}.png"));
         }

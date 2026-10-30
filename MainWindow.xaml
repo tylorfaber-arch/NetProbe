@@ -145,9 +145,11 @@
                                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                 <TextBlock Text="INTERNET" Style="{StaticResource CardTitle}" />
                                 <TextBlock Grid.Row="1" x:Name="InetBig" Text="Not tested" Style="{StaticResource CardBig}" />
-                                <TextBlock Grid.Row="2" x:Name="InetSub" Style="{StaticResource CardSub}" />
+                                <TextBlock Grid.Row="2" x:Name="InetSub" Style="{StaticResource CardSub}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
                                 <StackPanel Grid.Row="3" Orientation="Horizontal">
                                     <Button x:Name="DashTestBtn" Content="Run tests" Click="RunTests_Click" />
+                                    <Button Content="Details" Click="TestDetails_Click" Margin="8,0,0,0" />
+                                    <ProgressBar x:Name="DashTestProgress" Width="140" Height="4" Margin="12,0,0,0" VerticalAlignment="Center" Visibility="Collapsed" />
                                 </StackPanel>
                             </Grid>
                         </Grid>
@@ -279,6 +281,7 @@
                     <Button Content="Ping" Click="Ping_Click" Margin="4" />
                     <Button Content="Traceroute" Click="Trace_Click" Margin="4" />
                     <Button Content="DNS lookup" Click="Dns_Click" Margin="4" />
+                    <Button Content="WHOIS" Click="Whois_Click" Margin="4" ToolTip="Who owns a domain or IP address (registrar, dates, network owner, abuse contact)" />
                     <Button Content="Port check" Click="Ports_Click" Margin="4" />
                     <Button Content="Ping gateway" Click="PingGw_Click" Margin="4" />
                     <Button x:Name="ToolStopBtn" Content="Stop" Click="ToolStop_Click" Margin="4" IsEnabled="False" />

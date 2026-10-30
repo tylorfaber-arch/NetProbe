@@ -21,11 +21,17 @@ public static class ConnectivityTests
         return (t.Count, t.Count > 0 ? t.Average() : 0);
     }
 
-    public static async IAsyncEnumerable<TestResult> RunAsync(string? gateway, IReadOnlyList<string> dns, [EnumeratorCancellation] CancellationToken ct = default)
+    /// <summary>How many results RunAsync yields for this many DNS servers.</summary>
+    public static int CountFor(int dnsServers) => 7 + dnsServers;
+
+    /// <param name="running">Receives the name of each check just before it starts.</param>
+    public static async IAsyncEnumerable<TestResult> RunAsync(string? gateway, IReadOnlyList<string> dns, IProgress<string>? running = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
         if (gateway == null) yield return new(Sev.Fail, "Default gateway", "None configured on this adapter");
         else
         {
+            running?.Report($"Ping gateway {gateway}");
             var (ok, avg) = await PingN(gateway);
             yield return ok > 0
                 ? new(Sev.Pass, $"Ping gateway {gateway}", $"{ok}/4 replies, avg {avg:0.#} ms")
@@ -35,6 +41,7 @@ public static class ConnectivityTests
         foreach (var d in dns)
         {
             if (ct.IsCancellationRequested) yield break;
+            running?.Report($"DNS server {d}");
             var sw = Stopwatch.StartNew();
             TestResult res;
             try
@@ -49,11 +56,13 @@ public static class ConnectivityTests
 
         foreach (var h in new[] { "1.1.1.1", "8.8.8.8" })
         {
+            running?.Report($"Ping internet {h}");
             var (ok, avg) = await PingN(h);
             yield return ok > 0 ? new(Sev.Pass, $"Ping internet {h}", $"{ok}/4 replies, avg {avg:0.#} ms") : new(Sev.Fail, $"Ping internet {h}", "No replies");
         }
 
         {
+            running?.Report("System DNS lookup");
             var sw = Stopwatch.StartNew();
             TestResult res;
             try
@@ -66,6 +75,7 @@ public static class ConnectivityTests
         }
 
         {
+            running?.Report("HTTP internet check");
             TestResult res;
             try
             {
@@ -80,6 +90,7 @@ public static class ConnectivityTests
         }
 
         {
+            running?.Report("HTTPS check");
             var sw = Stopwatch.StartNew();
             TestResult res;
             try
@@ -92,6 +103,7 @@ public static class ConnectivityTests
         }
 
         {
+            running?.Report("Public IP");
             TestResult res;
             try { res = new(Sev.Info, "Public IP", (await Http.GetStringAsync("https://api.ipify.org", ct)).Trim()); }
             catch { res = new(Sev.Warn, "Public IP", "Could not reach api.ipify.org"); }
