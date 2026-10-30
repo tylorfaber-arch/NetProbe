@@ -20,10 +20,12 @@ public sealed class ReportData
     public Dictionary<string, string> Adapter { get; set; } = new();
     public List<Dictionary<string, string>> SwitchPorts { get; set; } = new();
     public List<TestRow> Tests { get; set; } = new();
+    public List<HealthRow> PortHealth { get; set; } = new();
     public Dictionary<string, string> Latency { get; set; } = new();
     public List<ScanRow> LanScan { get; set; } = new();
 
     public sealed record TestRow(string Result, string Test, string Detail);
+    public sealed record HealthRow(string Status, string Check, string Result, string Meaning);
     public sealed record ScanRow(string Ip, string Mac, string Hostname, string Ping, string Note);
 
     public static readonly JsonSerializerOptions Json = new()
@@ -82,6 +84,16 @@ th{background:#f3f5f8;font-weight:600} td.k{width:200px;color:#5b6470}
             sb.Append("<h2>Connectivity tests</h2><table><tr><th>Result</th><th>Test</th><th>Detail</th></tr>");
             foreach (var t in r.Tests)
                 sb.Append($"<tr><td class={t.Result.ToLowerInvariant()}><b>{H(t.Result)}</b></td><td>{H(t.Test)}</td><td>{H(t.Detail)}</td></tr>");
+            sb.Append("</table>");
+        }
+        if (r.PortHealth.Count > 0)
+        {
+            sb.Append("<h2>Port health</h2><table><tr><th>Status</th><th>Check</th><th>Result</th><th>What it means</th></tr>");
+            foreach (var h in r.PortHealth)
+            {
+                var cls = h.Status switch { "OK" => "pass", "PROBLEM" => "fail", "WARNING" => "warn", _ => "" };
+                sb.Append($"<tr><td class={cls}><b>{H(h.Status)}</b></td><td>{H(h.Check)}</td><td>{H(h.Result)}</td><td class=muted>{H(h.Meaning)}</td></tr>");
+            }
             sb.Append("</table>");
         }
         if (r.Latency.Count > 0) Section(sb, "Latency", r.Latency);

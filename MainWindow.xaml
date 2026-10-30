@@ -66,6 +66,7 @@
             <ListBoxItem Tag="Dashboard" IsSelected="True"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE80F;" /><TextBlock Text="Dashboard" /></StackPanel></ListBoxItem>
             <ListBoxItem Tag="Link"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE839;" /><TextBlock Text="Link / IP" /></StackPanel></ListBoxItem>
             <ListBoxItem Tag="Switch"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE968;" /><TextBlock Text="Switch Port" /></StackPanel></ListBoxItem>
+            <ListBoxItem Tag="Health"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE95E;" /><TextBlock Text="Port Health" /></StackPanel></ListBoxItem>
             <ListBoxItem Tag="Tests"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE9D9;" /><TextBlock Text="Connectivity" /></StackPanel></ListBoxItem>
             <ListBoxItem Tag="Latency"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE9D2;" /><TextBlock Text="Latency" /></StackPanel></ListBoxItem>
             <ListBoxItem Tag="Tools"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource NavIcon}" Text="&#xE90F;" /><TextBlock Text="Tools" /></StackPanel></ListBoxItem>
@@ -81,9 +82,20 @@
             <Grid x:Name="PageDashboard">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="2*" MinHeight="330" />
                     <RowDefinition Height="*" MinHeight="170" />
                 </Grid.RowDefinitions>
+
+                <!-- shown only when Port Health finds a problem -->
+                <Border x:Name="HealthBanner" Grid.Row="1" Visibility="Collapsed" Background="{StaticResource FailBrush}" CornerRadius="8"
+                        Padding="16,10" Margin="6,0,6,6" Cursor="Hand" MouseLeftButtonUp="HealthBanner_Click">
+                    <DockPanel>
+                        <TextBlock Text="&#xE7BA;" FontFamily="{StaticResource IconFont}" FontSize="18" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center" />
+                        <TextBlock DockPanel.Dock="Right" Text="View details  ›" Foreground="White" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        <TextBlock x:Name="HealthBannerText" Foreground="White" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+                </Border>
                 <DockPanel Margin="0,0,0,2">
                     <TextBlock Text="Dashboard" Style="{StaticResource PageTitle}" DockPanel.Dock="Left" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
@@ -94,7 +106,7 @@
                     </StackPanel>
                 </DockPanel>
 
-                <UniformGrid Grid.Row="1" Columns="2" Rows="2">
+                <UniformGrid Grid.Row="2" Columns="2" Rows="2">
                     <!-- Link card -->
                     <Border Style="{StaticResource Card}" Padding="0">
                         <Grid>
@@ -156,7 +168,7 @@
                     </Border>
                 </UniformGrid>
 
-                <Border Grid.Row="2" Style="{StaticResource Card}">
+                <Border Grid.Row="3" Style="{StaticResource Card}">
                     <Grid>
                         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition /></Grid.RowDefinitions>
                         <DockPanel>
@@ -212,6 +224,50 @@
                             <GridView>
                                 <GridViewColumn Header="Field" Width="220" CellTemplate="{StaticResource KvKey}" />
                                 <GridViewColumn Header="Value" Width="670" CellTemplate="{StaticResource KvValue}" />
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                </Border>
+            </DockPanel>
+
+            <!-- Port health -->
+            <DockPanel x:Name="PageHealth" Visibility="Collapsed">
+                <TextBlock DockPanel.Dock="Top" Text="Port Health" Style="{StaticResource PageTitle}" />
+                <WrapPanel DockPanel.Dock="Top" Style="{StaticResource Toolbar}">
+                    <TextBlock Text="Listen for" VerticalAlignment="Center" Margin="4,0" />
+                    <TextBox x:Name="HealthSeconds" Width="64" Margin="4" Text="30" />
+                    <TextBlock Text="seconds" VerticalAlignment="Center" Margin="4,0,12,0" />
+                    <Button x:Name="HealthBtn" Content="Run health check" Click="Health_Click" Margin="4" />
+                    <Button x:Name="StopHealthBtn" Content="Stop early" Click="StopHealth_Click" Margin="4" IsEnabled="False" />
+                </WrapPanel>
+                <Border DockPanel.Dock="Top" Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock x:Name="HealthSummary" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" Text="Not run yet" />
+                        <TextBlock x:Name="HealthHint" Margin="0,6,0,0" Opacity="0.75" TextWrapping="Wrap"
+                                   Text="Listens on the port for loops, broadcast storms, spanning-tree changes, rogue DHCP servers and duplicate IPs, and checks speed/duplex, errors and link drops." />
+                        <ProgressBar x:Name="HealthProgress" Height="4" Margin="0,10,0,0" Visibility="Collapsed" IsIndeterminate="True" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Card}" Padding="4">
+                    <ListView x:Name="HealthList" BorderThickness="0">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="Status" Width="95">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate><TextBlock Text="{Binding Badge}" FontWeight="Bold" Style="{StaticResource SevText}" /></DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Check" Width="160" DisplayMemberBinding="{Binding Check}" />
+                                <GridViewColumn Header="Result" Width="290">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate><TextBlock Text="{Binding Result}" TextWrapping="Wrap" /></DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="What it means" Width="370">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate><TextBlock Text="{Binding Explain}" TextWrapping="Wrap" Opacity="0.85" /></DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
                             </GridView>
                         </ListView.View>
                     </ListView>

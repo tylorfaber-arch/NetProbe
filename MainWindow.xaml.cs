@@ -30,8 +30,12 @@ public partial class MainWindow : Window
     private bool? _wasUp;
     private DateTime _linkUpAt;
     private DateTime? _lastDiscover, _lastTests;
-    private int _discoverRemaining, _testTotal;
+    private int _discoverRemaining, _testTotal, _linkFlaps;
     private string? _currentTest;
+    private List<HealthItem> _health = new();
+    private bool _healthRunning;
+    private CancellationTokenSource? _healthStop;
+    private DateTime? _lastHealth;
 
     private Brush B(string key) => (Brush)FindResource(key);
 
@@ -166,11 +170,14 @@ public partial class MainWindow : Window
                 _linkUpAt = DateTime.Now;
                 _pendingAutoTests = true;
                 if (_wasUp == false) { _neighbors.Clear(); _lastDiscover = null; ShowNeighbors(); }
-                if (App.IsAdmin && !_discovering) _ = DiscoverAsync(auto: true);
+                if (App.IsAdmin && !_discovering && !_healthRunning) _ = PortChecksAsync();
                 Status(_wasUp == false ? "Cable connected - running checks..." : "Wired link up - running checks...");
             }
             if (_wasUp == true && !s.IsUp)
             {
+                _linkFlaps++;
+                _health.Clear();
+                HealthList.ItemsSource = null;
                 _neighbors.Clear();
                 _lastDiscover = null;
                 _tests.Clear();
@@ -306,6 +313,20 @@ public partial class MainWindow : Window
                 : s.IsWireless ? "Switch discovery needs a wired Ethernet adapter."
                 : "Click Discover, or plug in a cable to start automatically.");
         }
+        // port health folds into the switch card + a red banner for problems
+        var problems = _health.Where(h => h.Sev == Sev.Fail).ToList();
+        if (_healthRunning) lines.Insert(Math.Min(1, lines.Count), "Port health: checking...");
+        else if (_lastHealth != null)
+        {
+            int warns = _health.Count(h => h.Sev == Sev.Warn);
+            lines.Insert(Math.Min(1, lines.Count), problems.Count > 0 ? $"Port health: {problems.Count} problem(s) - {problems[0].Check}"
+                : warns > 0 ? $"Port health: OK, {warns} warning(s)" : "Port health: OK");
+            if (problems.Count > 0) SetBar(SwBar, "FailBrush");
+            else if (warns > 0 && _neighbors.Count > 0) SetBar(SwBar, "WarnBrush");
+        }
+        HealthBanner.Visibility = problems.Count > 0 && !_healthRunning ? Visibility.Visible : Visibility.Collapsed;
+        HealthBannerText.Text = problems.Count == 0 ? "" :
+            $"{problems[0].Check}: {problems[0].Result}" + (problems.Count > 1 ? $"   (+{problems.Count - 1} more)" : "");
         SwSub.Text = string.Join("\n", lines);
         DashDiscoverBtn.IsEnabled = !_discovering;
         DashDiscoverProgress.Visibility = _discovering ? Visibility.Visible : Visibility.Collapsed;
@@ -350,7 +371,7 @@ public partial class MainWindow : Window
         return $"{icon}  {t.Name}  —  {detail}";
     }
 
-    private void TestDetails_Click(object sender, RoutedEventArgs e) => Nav.SelectedIndex = 3;
+    private void TestDetails_Click(object sender, RoutedEventArgs e) => NavTo("Tests");
 
     private void OnLatency()
     {
@@ -383,7 +404,7 @@ public partial class MainWindow : Window
         {
             await RefreshAdapterAsync();
             var tasks = new List<Task> { RunTestsAsync() };
-            if (App.IsAdmin && !_discovering) tasks.Add(DiscoverAsync(auto: true));
+            if (App.IsAdmin && !_discovering && !_healthRunning) tasks.Add(PortChecksAsync());
             await Task.WhenAll(tasks);
             DashStatus.Text = $"Full check finished {DateTime.Now:t}";
             if (App.RemoteUploadEnabled && _settings.AutoUpload && !string.IsNullOrWhiteSpace(_settings.UploadUrl))
@@ -408,14 +429,77 @@ public partial class MainWindow : Window
         var tag = (string)item.Tag;
         foreach (var (name, page) in new (string, FrameworkElement)[]
                  {
-                     ("Dashboard", PageDashboard), ("Link", PageLink), ("Switch", PageSwitch), ("Tests", PageTests), ("Latency", PageLatency),
+                     ("Dashboard", PageDashboard), ("Link", PageLink), ("Switch", PageSwitch), ("Health", PageHealth), ("Tests", PageTests), ("Latency", PageLatency),
                      ("Tools", PageTools), ("Scan", PageScan), ("Report", PageReport), ("Settings", PageSettings)
                  })
             page.Visibility = name == tag ? Visibility.Visible : Visibility.Collapsed;
         if (tag == "Latency") OnLatency();
     }
 
+    private void NavTo(string tag) =>
+        Nav.SelectedItem = Nav.Items.OfType<ListBoxItem>().First(i => (string)i.Tag == tag);
+
     private void Elevate_Click(object sender, RoutedEventArgs e) => App.RestartElevated();
+
+    // ================================================================== port health
+
+    /// <summary>Switch discovery then port health - both use pktmon, so they run one after the other.</summary>
+    private async Task PortChecksAsync()
+    {
+        await DiscoverAsync(auto: true);
+        await HealthAsync(auto: true);
+    }
+
+    private async void Health_Click(object sender, RoutedEventArgs e) => await HealthAsync(auto: false);
+    private void StopHealth_Click(object sender, RoutedEventArgs e) => _healthStop?.Cancel();
+    private void HealthBanner_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => NavTo("Health");
+
+    private async Task HealthAsync(bool auto)
+    {
+        if (_healthRunning || _discovering || _snap == null) return;
+        int secs = int.TryParse(HealthSeconds.Text, out var v) ? Math.Clamp(v, 10, 300) : 30;
+        _healthRunning = true;
+        _healthStop = new CancellationTokenSource();
+        HealthBtn.IsEnabled = false;
+        DiscoverBtn.IsEnabled = DashDiscoverBtn.IsEnabled = false;
+        StopHealthBtn.IsEnabled = true;
+        HealthProgress.Visibility = Visibility.Visible;
+        HealthSummary.Text = "Checking port health...";
+        UpdateDashboard();
+        try
+        {
+            var progress = new Progress<string>(t => { HealthHint.Text = t; if (_healthRunning) DashStatus.Text = "Port health: " + t; });
+            _health = await PortHealth.RunAsync(_snap, _neighbors, _linkFlaps, secs, progress, _healthStop.Token);
+            _lastHealth = DateTime.Now;
+            ShowHealth();
+        }
+        catch (Exception ex)
+        {
+            HealthSummary.Text = "Health check failed";
+            HealthHint.Text = ex.Message;
+        }
+        finally
+        {
+            _healthRunning = false;
+            HealthBtn.IsEnabled = true;
+            DiscoverBtn.IsEnabled = DashDiscoverBtn.IsEnabled = true;
+            StopHealthBtn.IsEnabled = false;
+            HealthProgress.Visibility = Visibility.Collapsed;
+            if (DashStatus.Text.StartsWith("Port health:")) DashStatus.Text = "";
+            UpdateDashboard();
+        }
+    }
+
+    private void ShowHealth()
+    {
+        HealthList.ItemsSource = _health;
+        int fail = _health.Count(h => h.Sev == Sev.Fail), warn = _health.Count(h => h.Sev == Sev.Warn);
+        HealthSummary.Text = fail > 0 ? $"{fail} problem(s), {warn} warning(s)" : warn > 0 ? $"No problems, {warn} warning(s)" : "No problems found";
+        HealthSummary.Foreground = fail > 0 ? B("FailBrush") : warn > 0 ? B("WarnBrush") : B("PassBrush");
+        HealthHint.Text = $"Checked {_lastHealth:t}. " + (_health.FirstOrDefault(h => h.Sev == Sev.Fail) is { } f ? f.Explain : "");
+        Status($"Port health: {HealthSummary.Text}");
+        UpdateDashboard();
+    }
 
     private void Theme_Click(object sender, RoutedEventArgs e) =>
         ThemeBox.SelectedIndex = Application.Current.ThemeMode == ThemeMode.Dark ? 1 : 2;
@@ -451,7 +535,7 @@ public partial class MainWindow : Window
                 App.RestartElevated();
             return;
         }
-        if (_discovering) return;
+        if (_discovering || _healthRunning) return;
         int secs = int.TryParse(DiscoverSeconds.Text, out var v) ? Math.Clamp(v, 10, 300) : 65;
         if (secs != _settings.DiscoverSeconds) { _settings.DiscoverSeconds = secs; _settings.Save(); }
 
@@ -676,7 +760,7 @@ public partial class MainWindow : Window
     {
         if (ScanList.SelectedItem is not ScanHost h) return;
         ToolHost.Text = h.IP;
-        Nav.SelectedIndex = 5;
+        NavTo("Tools");
     }
 
     // ================================================================== report / upload
@@ -701,6 +785,7 @@ public partial class MainWindow : Window
             return d;
         }).ToList();
         r.Tests = _tests.Select(t => new ReportData.TestRow(t.Badge, t.Name, t.Detail)).ToList();
+        r.PortHealth = _health.Select(h => new ReportData.HealthRow(h.Badge, h.Check, h.Result, h.Explain)).ToList();
         if (!string.IsNullOrEmpty(_monitor.Gateway.Target)) r.Latency[$"Gateway {_monitor.Gateway.Target}"] = _monitor.Gateway.Stats();
         if (!string.IsNullOrEmpty(_monitor.Internet.Target)) r.Latency[$"Internet {_monitor.Internet.Target}"] = _monitor.Internet.Stats();
         r.LanScan = _scan.Select(h => new ReportData.ScanRow(h.IP, h.Mac, h.Name, h.Ping, h.Note)).ToList();
@@ -766,6 +851,11 @@ public partial class MainWindow : Window
         {
             var fails = _tests.Where(t => t.Sev == Sev.Fail).Select(t => t.Name).ToList();
             sb.AppendLine("Tests: " + (fails.Count == 0 ? "all passed" : "FAILED - " + string.Join("; ", fails)));
+        }
+        if (_lastHealth != null)
+        {
+            var issues = _health.Where(h => h.Sev is Sev.Fail or Sev.Warn).Select(h => $"{h.Badge} {h.Check}: {h.Result}").ToList();
+            sb.AppendLine("Port health: " + (issues.Count == 0 ? "no problems" : string.Join("; ", issues)));
         }
         Clipboard.SetText(sb.ToString());
         ReportStatus.Text = "Summary copied to clipboard.";
@@ -881,6 +971,16 @@ public partial class MainWindow : Window
             ShowNeighbors();
         }
         var prefix = Environment.GetEnvironmentVariable("NETPROBE_THEME") ?? "default";
+        if (Environment.GetEnvironmentVariable("NETPROBE_FAKE_HEALTH") is { } hp && File.Exists(hp))
+        {
+            _health = PortHealth.Analyze(hp, new HealthContext
+            {
+                OurMac = "c8:53:09:ec:08:5d", OurIp = "192.168.86.106", Nonce = "NETPROBE-LOOP-test1234abcd",
+                ProbesSent = 5, UnicastSent = 5, Seconds = 30, DhcpXid = 1
+            });
+            _lastHealth = DateTime.Now;
+            ShowHealth();
+        }
         while (_testing) await Task.Delay(100);
         var trace = new List<string> { $"before: testing={_testing} snap={_snap != null}" };
         var tests = RunTestsAsync();

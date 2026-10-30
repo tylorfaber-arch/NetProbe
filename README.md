@@ -33,6 +33,7 @@
 |---|---|
 | **Dashboard** | Link, IP/DHCP, Switch Port and Internet status at a glance, plus a live latency graph |
 | **Switch port discovery** | LLDP and Cisco CDP: switch name, port, VLAN, voice VLAN, management IP, PoE, speed |
+| **Port health** | Flags loops, broadcast storms, spanning-tree changes, rogue DHCP servers, duplicate IPs, speed/duplex mismatch, port errors and link drops |
 | **Auto-run on plug-in** | Plug in a cable and the tests and switch discovery start on their own |
 | **Link / IP** | Speed, MAC, IP, gateway, DHCP server and lease, DNS, Wi-Fi signal and channel |
 | **Connectivity tests** | Gateway, DNS servers, internet, captive portal, HTTPS, public IP |

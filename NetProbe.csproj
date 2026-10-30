@@ -12,7 +12,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PlatformTarget>x64</PlatformTarget>
-    <Version>2.0.2</Version>
+    <Version>2.0.3</Version>
     <Product>NetProbe</Product>
     <Description>NetProbe network tester</Description>
     <Copyright>Tylor Faber</Copyright>

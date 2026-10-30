@@ -37,6 +37,42 @@ public partial class App : Application
             Shutdown();
             return;
         }
+        // Self-test: NetProbe.exe --health-test <outfile> <seconds> <adapter name>   (run elevated; live port health)
+        if (e.Args.Length >= 4 && e.Args[0] == "--health-test")
+        {
+            string result;
+            try
+            {
+                var nic = AdapterInfo.List().First(n => n.Name == e.Args[3]);
+                var snap = AdapterInfo.Read(nic.Id);
+                // Task.Run: blocking on the UI thread here would deadlock RunAsync's continuations
+                var items = Task.Run(() => PortHealth.RunAsync(snap, Array.Empty<Neighbor>(), 0, int.Parse(e.Args[2]), null, CancellationToken.None)).GetAwaiter().GetResult();
+                result = $"admin={IsAdmin} comp={LinkDiscovery.ComponentIdFor(snap.Mac)}\n" +
+                         string.Join("\n", items.Select(h => $"{h.Badge,-8} {h.Check,-22} {h.Result}  |  {h.Explain}"));
+            }
+            catch (Exception ex) { result = "ERROR " + ex; }
+            File.WriteAllText(e.Args[1], result);
+            Shutdown();
+            return;
+        }
+        // Self-test: NetProbe.exe --analyze <pcap> <outfile> <ourMac> <ourIp> <nonce> <probesSent> <unicastSent> <seconds>
+        if (e.Args.Length >= 9 && e.Args[0] == "--analyze")
+        {
+            string result;
+            try
+            {
+                var ctx = new HealthContext
+                {
+                    OurMac = e.Args[3], OurIp = e.Args[4], Nonce = e.Args[5], ProbesSent = int.Parse(e.Args[6]),
+                    UnicastSent = int.Parse(e.Args[7]), Seconds = double.Parse(e.Args[8]), DhcpXid = 1
+                };
+                result = string.Join("\n", PortHealth.Analyze(e.Args[1], ctx).Select(h => $"{h.Badge,-8} {h.Check,-22} {h.Result}"));
+            }
+            catch (Exception ex) { result = "ERROR " + ex; }
+            File.WriteAllText(e.Args[2], result);
+            Shutdown();
+            return;
+        }
         bool snapshot = Environment.GetEnvironmentVariable("NETPROBE_SNAPSHOT") != null;
         // Ask for admin up front (switch port discovery needs it). If UAC is declined, keep running limited.
         if (!IsAdmin && !snapshot && !e.Args.Contains("--no-elevate"))

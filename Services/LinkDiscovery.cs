@@ -19,7 +19,19 @@ public static class LinkDiscovery
 
     public static bool Available => File.Exists(PktMon);
 
-    private static (int Code, string Output) Run(string args)
+    /// <summary>pktmon component id of the NIC with this MAC ("C8-53-09-EC-08-5D"), so a capture can be limited to it.</summary>
+    public static string? ComponentIdFor(string mac)
+    {
+        var (_, output) = Run("comp list");
+        foreach (var line in output.Split('\n'))
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(line, @"^\s*(\d+)\s+([0-9A-Fa-f]{2}(?:-[0-9A-Fa-f]{2}){5})\s");
+            if (m.Success && m.Groups[2].Value.Equals(mac, StringComparison.OrdinalIgnoreCase)) return m.Groups[1].Value;
+        }
+        return null;
+    }
+
+    internal static (int Code, string Output) Run(string args)
     {
         var psi = new ProcessStartInfo(PktMon, args)
         {
