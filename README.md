@@ -19,6 +19,7 @@
 
 <p align="center">
   <sub><b>Requirements:</b> Windows 10 (2004 or newer) or Windows 11, 64-bit &nbsp;&middot;&nbsp; Administrator rights for switch port discovery &nbsp;&middot;&nbsp; Nothing else to install</sub><br>
+  <sub>Windows may show a SmartScreen warning because the app isn't code-signed yet &mdash; click <b>More info &rarr; Run anyway</b>.</sub><br>
   <sub><a href="https://github.com/tylorfaber-arch/NetProbe/releases">All releases</a></sub>
 </p>
 
