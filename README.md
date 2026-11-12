@@ -40,7 +40,7 @@
 | **Latency** | Live gateway + internet ping graph with loss and jitter |
 | **Tools** | Ping, traceroute, DNS lookup, TCP port check |
 | **LAN scan** | Finds devices on the subnet with MAC and hostname |
-| **Reports** | PDF, HTML or JSON, or copy a short summary for a ticket |
+| **Reports** | PDF, HTML or JSON saved instantly to Documents\NetProbe (or a folder you pick), or copy a short summary for a ticket. Every switch discovery and port health run is also kept in `History` (capture + JSON) |
 | **Light / dark** | Follows your Windows theme |
 
 NetProbe asks for Administrator when it starts. Choose **No** to run in limited mode &mdash; everything except switch port discovery still works.

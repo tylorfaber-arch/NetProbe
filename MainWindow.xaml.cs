@@ -55,6 +55,8 @@ public partial class MainWindow : Window
         // settings -> controls
         TechBox.Text = _settings.TechName;
         SiteBox.Text = _settings.SiteName;
+        ReportFolderBox.Text = _settings.ResolvedReportFolder;
+        KeepHistoryBox.IsChecked = _settings.KeepHistory;
         UploadUrlBox.Text = _settings.UploadUrl;
         ApiKeyBox.Password = _settings.ApiKey;
         AutoUploadBox.IsChecked = _settings.AutoUpload;
@@ -68,6 +70,7 @@ public partial class MainWindow : Window
             $"Running as: {(App.IsAdmin ? "Administrator" : "standard user (switch discovery disabled)")}\n" +
             $"Packet capture (pktmon): {(LinkDiscovery.Available ? "available" : "not found - needs Windows 10 2004+")}\n" +
             $"Last capture file: {LinkDiscovery.LastCapture}\n" +
+            $"Reports folder: {_settings.ResolvedReportFolder}\n" +
             $"Settings: %APPDATA%\\NetProbe\\settings.json";
         UpdateUploadButton();
         if (!App.RemoteUploadEnabled)
@@ -246,7 +249,7 @@ public partial class MainWindow : Window
                 string W(string k) => s.Wifi.FirstOrDefault(w => w.Key == "Wi-Fi " + k)?.Value ?? "?";
                 lines.Add($"Wi-Fi {W("SSID")} · signal {W("Signal")} · {W("Band")} ch {W("Channel")}");
             }
-            if (_neighbors.FirstOrDefault()?.Get("Switch port speed") is { } sps) lines.Add("Switch side: " + sps);
+            if (_neighbors.FirstOrDefault()?.Get("Switch port speed") is { } sps && !sps.StartsWith("Not reported")) lines.Add("Switch side: " + sps);
         }
         else
         {
@@ -302,8 +305,12 @@ public partial class MainWindow : Window
         else if (_lastDiscover != null)
         {
             SetBar(SwBar, "WarnBrush");
-            SwBig.Text = "No LLDP / CDP heard";
-            lines.Add("The switch may have LLDP/CDP turned off, or this is an unmanaged switch / home router.");
+            SwBig.Text = "No switch heard";
+            if (s.IsUp && !s.IsWireless && s.Apipa)
+                lines.Add("Isolated segment - link is up, but no DHCP and no switch LLDP/CDP. Likely an unmanaged switch, a looped or dead-end port, or a jack that isn't patched to the network.");
+            else
+                lines.Add("No LLDP or CDP came from a switch. It may have them turned off, or this is an unmanaged switch / home router.");
+            if (LinkDiscovery.LastSelfFrames > 0) lines.Add("Ignored this laptop's own LLDP frames.");
         }
         else
         {
@@ -472,6 +479,7 @@ public partial class MainWindow : Window
             _health = await PortHealth.RunAsync(_snap, _neighbors, _linkFlaps, secs, progress, _healthStop.Token);
             _lastHealth = DateTime.Now;
             ShowHealth();
+            SaveHistory("health", Path.Combine(LinkDiscovery.WorkDir, "health.pcapng"));
         }
         catch (Exception ex)
         {
@@ -563,7 +571,8 @@ public partial class MainWindow : Window
             _neighbors = await LinkDiscovery.CaptureAsync(secs, progress, _discoverStop.Token);
             _lastDiscover = DateTime.Now;
             ShowNeighbors();
-            Status(_neighbors.Count > 0 ? $"Switch port found via {_neighbors[0].Protocol}." : "No LLDP/CDP heard.");
+            Status(_neighbors.Count > 0 ? $"Switch port found via {_neighbors[0].Protocol}." : "No switch heard (no external LLDP/CDP).");
+            SaveHistory("switch", LinkDiscovery.LastCapture);
         }
         catch (Exception ex)
         {
@@ -600,8 +609,11 @@ public partial class MainWindow : Window
         }
         else if (_lastDiscover != null)
         {
-            SwitchSummary.Text = "No LLDP / CDP heard";
-            SwitchHint.Text = "The switch may have LLDP/CDP disabled, or this is an unmanaged switch / home router. Try listening longer (CDP is sent every 60 s).";
+            SwitchSummary.Text = "No switch heard on this port";
+            SwitchHint.Text = "No LLDP or CDP came from an external device. The switch may have LLDP/CDP disabled, or this is an unmanaged switch / home router. Try listening longer (CDP is sent every 60 s)." +
+                (LinkDiscovery.LastSelfFrames > 0
+                    ? " NetProbe ignored LLDP/CDP sent by this laptop itself (it can show up when the switch port is looped)."
+                    : "");
         }
         else
         {
@@ -792,15 +804,83 @@ public partial class MainWindow : Window
         return r;
     }
 
-    private string? AskSavePath(string ext, string filter)
+    /// <summary>
+    /// Next free file name in the report folder. Creates the folder if needed - no dialogs, so Save is instant.
+    /// </summary>
+    private string NextReportPath(string ext)
     {
-        var tag = string.IsNullOrWhiteSpace(SiteBox.Text) ? Environment.MachineName : string.Concat(SiteBox.Text.Split(Path.GetInvalidFileNameChars()));
-        var dlg = new SaveFileDialog
+        SaveReportFolder();
+        var dir = _settings.ResolvedReportFolder;
+        Directory.CreateDirectory(dir);
+        var tag = string.IsNullOrWhiteSpace(SiteBox.Text) ? Environment.MachineName : string.Concat(SiteBox.Text.Trim().Split(Path.GetInvalidFileNameChars()));
+        var stem = $"NetProbe-{tag}-{DateTime.Now:yyyyMMdd-HHmmss}";
+        var path = Path.Combine(dir, $"{stem}.{ext}");
+        for (int i = 2; File.Exists(path); i++) path = Path.Combine(dir, $"{stem}-{i}.{ext}");
+        return path;
+    }
+
+    /// <summary>Stores the folder box in settings. Typing the default path (or clearing the box) means "use the default".</summary>
+    private void SaveReportFolder()
+    {
+        var text = ReportFolderBox.Text.Trim().Trim('"');
+        var custom = text.Length == 0 || string.Equals(Path.TrimEndingDirectorySeparator(text), Path.TrimEndingDirectorySeparator(Settings.DefaultReportFolder), StringComparison.OrdinalIgnoreCase) ? "" : text;
+        if (custom != _settings.ReportFolder) { _settings.ReportFolder = custom; _settings.Save(); }
+        ReportFolderBox.Text = _settings.ResolvedReportFolder;
+    }
+
+    private void ReportFolder_LostFocus(object sender, RoutedEventArgs e) => SaveReportFolder();
+
+    private void BrowseReportFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var start = _settings.ResolvedReportFolder;
+        var dlg = new OpenFolderDialog { Title = "Folder for NetProbe reports", InitialDirectory = Directory.Exists(start) ? start : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) };
+        if (dlg.ShowDialog(this) != true) return;
+        ReportFolderBox.Text = dlg.FolderName;
+        SaveReportFolder();
+        ReportStatus.Text = "Reports will be saved to " + _settings.ResolvedReportFolder;
+    }
+
+    private void ResetReportFolder_Click(object sender, RoutedEventArgs e)
+    {
+        ReportFolderBox.Text = "";
+        SaveReportFolder();
+        ReportStatus.Text = "Reports will be saved to " + _settings.ResolvedReportFolder;
+    }
+
+    private void OpenReportFolder_Click(object sender, RoutedEventArgs e)
+    {
+        try
         {
-            Filter = filter, FileName = $"NetProbe-{tag}-{DateTime.Now:yyyyMMdd-HHmm}.{ext}",
-            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory)
-        };
-        return dlg.ShowDialog(this) == true ? dlg.FileName : null;
+            SaveReportFolder();
+            Directory.CreateDirectory(_settings.ResolvedReportFolder);
+            OpenFile(_settings.ResolvedReportFolder);
+        }
+        catch (Exception ex) { ReportStatus.Text = "Could not open folder: " + ex.Message; }
+    }
+
+    private void KeepHistory_Click(object sender, RoutedEventArgs e)
+    {
+        _settings.KeepHistory = KeepHistoryBox.IsChecked == true;
+        _settings.Save();
+    }
+
+    /// <summary>
+    /// Copies a run's capture and the current JSON report into History, e.g.
+    /// "20261112-121557-801 Dawson-switch.pcapng" + ".json". Never throws - history must not break a check.
+    /// </summary>
+    private void SaveHistory(string kind, string capture)
+    {
+        if (!_settings.KeepHistory) return;
+        try
+        {
+            var dir = _settings.HistoryFolder;
+            Directory.CreateDirectory(dir);
+            var tag = string.IsNullOrWhiteSpace(SiteBox.Text) ? Environment.MachineName : string.Concat(SiteBox.Text.Trim().Split(Path.GetInvalidFileNameChars()));
+            var stem = Path.Combine(dir, $"{DateTime.Now:yyyyMMdd-HHmmss}-{tag}-{kind}");
+            if (File.Exists(capture) && new FileInfo(capture).Length > 0) File.Copy(capture, stem + ".pcapng", true);
+            File.WriteAllText(stem + ".json", BuildReport().ToJson());
+        }
+        catch (Exception ex) { Status("Could not save history: " + ex.Message); }
     }
 
     private static void OpenFile(string path)
@@ -810,10 +890,10 @@ public partial class MainWindow : Window
 
     private async void SavePdf_Click(object sender, RoutedEventArgs e)
     {
-        if (AskSavePath("pdf", "PDF (*.pdf)|*.pdf") is not { } path) return;
         ReportStatus.Text = "Creating PDF...";
         try
         {
+            var path = NextReportPath("pdf");
             await ReportWriter.SavePdfAsync(ReportWriter.ToHtml(BuildReport()), path);
             ReportStatus.Text = "Saved " + path;
             OpenFile(path);
@@ -823,17 +903,25 @@ public partial class MainWindow : Window
 
     private void SaveHtml_Click(object sender, RoutedEventArgs e)
     {
-        if (AskSavePath("html", "Web page (*.html)|*.html") is not { } path) return;
-        File.WriteAllText(path, ReportWriter.ToHtml(BuildReport()));
-        ReportStatus.Text = "Saved " + path;
-        OpenFile(path);
+        try
+        {
+            var path = NextReportPath("html");
+            File.WriteAllText(path, ReportWriter.ToHtml(BuildReport()));
+            ReportStatus.Text = "Saved " + path;
+            OpenFile(path);
+        }
+        catch (Exception ex) { ReportStatus.Text = "Save failed: " + ex.Message; }
     }
 
     private void SaveJson_Click(object sender, RoutedEventArgs e)
     {
-        if (AskSavePath("json", "JSON (*.json)|*.json") is not { } path) return;
-        File.WriteAllText(path, BuildReport().ToJson());
-        ReportStatus.Text = "Saved " + path;
+        try
+        {
+            var path = NextReportPath("json");
+            File.WriteAllText(path, BuildReport().ToJson());
+            ReportStatus.Text = "Saved " + path;
+        }
+        catch (Exception ex) { ReportStatus.Text = "Save failed: " + ex.Message; }
     }
 
     private void CopySummary_Click(object sender, RoutedEventArgs e)

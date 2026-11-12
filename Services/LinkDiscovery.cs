@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Text;
 
 namespace NetProbe.Services;
@@ -18,6 +19,48 @@ public static class LinkDiscovery
     private static string PktMon => Path.Combine(Environment.SystemDirectory, "PktMon.exe");
 
     public static bool Available => File.Exists(PktMon);
+
+    /// <summary>
+    /// How many LLDP/CDP frames the last capture or file parse dropped because this PC sent them
+    /// (pktmon sees outgoing frames, and a looped switch port reflects them back).
+    /// </summary>
+    public static int LastSelfFrames { get; private set; }
+
+    /// <summary>
+    /// MAC addresses of every adapter on this PC, as "aa:bb:cc:dd:ee:ff": visible adapters, Hyper-V vEthernet,
+    /// and (when pktmon is available and we are Administrator) the hidden components pktmon lists.
+    /// </summary>
+    public static HashSet<string> LocalMacs()
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                var b = ni.GetPhysicalAddress().GetAddressBytes();
+                if (b.Length == 6 && b.Any(x => x != 0)) set.Add(string.Join(":", b.Select(x => x.ToString("x2"))));
+            }
+        }
+        catch { }
+        try
+        {
+            if (Available && App.IsAdmin)
+                foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(Run("comp list").Output, @"\b([0-9A-Fa-f]{2}(?:-[0-9A-Fa-f]{2}){5})\b"))
+                    if (m.Groups[1].Value != "00-00-00-00-00-00") set.Add(m.Groups[1].Value.Replace('-', ':').ToLowerInvariant());
+        }
+        catch { }
+        return set;
+    }
+
+    /// <summary>True when a neighbor is really this PC: its source MAC is one of ours, or it names itself after this computer.</summary>
+    public static bool IsSelf(Neighbor n, ISet<string> localMacs)
+    {
+        if (n.Get("Source MAC") is { } src && localMacs.Contains(src)) return true;
+        if (n.Get("Chassis ID") is { } cid && localMacs.Contains(cid.Replace('-', ':'))) return true;
+        var host = Environment.MachineName;
+        bool Named(string? v) => v != null && (v.Equals(host, StringComparison.OrdinalIgnoreCase) || v.StartsWith(host + ".", StringComparison.OrdinalIgnoreCase));
+        return Named(n.Get("Chassis ID")) || Named(n.Get("Switch Name"));
+    }
 
     /// <summary>pktmon component id of the NIC with this MAC ("C8-53-09-EC-08-5D"), so a capture can be limited to it.</summary>
     public static string? ComponentIdFor(string mac)
@@ -53,9 +96,13 @@ public static class LinkDiscovery
         if (!Available) throw new InvalidOperationException("pktmon.exe not found (needs Windows 10 version 2004 or newer).");
         Directory.CreateDirectory(WorkDir);
         File.Delete(LastCapture);
+        // every segment is appended, so LastCapture holds the whole listen (pcapng allows several sections in one file)
+        File.WriteAllBytes(LastCapture, Array.Empty<byte>());
         var deadline = DateTime.UtcNow.AddSeconds(seconds);
         var found = new List<Neighbor>();
         var seen = new HashSet<string>();
+        var local = LocalMacs();
+        int self = 0;
 
         Run("stop");
         Run("filter remove");
@@ -85,8 +132,9 @@ public static class LinkDiscovery
                 Run($"etl2pcap \"{etl}\" --out \"{pcap}\"");
                 if (File.Exists(pcap))
                 {
-                    var got = ParseCapture(pcap);
-                    if (got.Count > 0 || !File.Exists(LastCapture)) File.Copy(pcap, LastCapture, true);
+                    var got = ParseCapture(pcap, local);
+                    self += LastSelfFrames;
+                    using (var dst = new FileStream(LastCapture, FileMode.Append)) using (var segFile = File.OpenRead(pcap)) segFile.CopyTo(dst);
                     foreach (var n in got) if (seen.Add(n.Key)) found.Add(n);
                 }
                 if (found.Count > 0 || DateTime.UtcNow >= deadline || stopEarly.IsCancellationRequested) break;
@@ -98,21 +146,28 @@ public static class LinkDiscovery
             Run("stop");
             Run("filter remove");
         }
+        LastSelfFrames = self;
         return found;
     });
 
     // ------------------------------------------------------------------ capture file parsing
 
-    public static List<Neighbor> ParseCapture(string path)
+    /// <summary>Decodes the LLDP/CDP neighbors in a capture, leaving out frames this PC sent (see <see cref="LastSelfFrames"/>).</summary>
+    public static List<Neighbor> ParseCapture(string path, ISet<string>? localMacs = null)
     {
+        localMacs ??= LocalMacs();
         var seen = new HashSet<string>();
         var list = new List<Neighbor>();
+        int self = 0;
         foreach (var f in ReadFrames(path))
         {
             Neighbor? n = null;
             try { n = ParseFrame(f); } catch { }
-            if (n != null && seen.Add(n.Key)) list.Add(n);
+            if (n == null) continue;
+            if (IsSelf(n, localMacs)) { self++; continue; }
+            if (seen.Add(n.Key)) list.Add(n);
         }
+        LastSelfFrames = self;
         return list;
     }
 
@@ -230,8 +285,10 @@ public static class LinkDiscovery
                     else if (oui == "00120F" && sub == 1 && l >= 9)
                     {
                         int an = f[d], mau = U16(f, d + 3);
-                        var mt = MauTypes.TryGetValue(mau, out var m) ? m : $"MAU type {mau}";
-                        r.Add("Switch port speed", mt + ((an & 2) != 0 ? " (auto-neg on)" : " (auto-neg off)"));
+                        // MAU type 0 = "other or unknown": the switch didn't say, so show only the auto-neg state
+                        var neg = (an & 2) != 0 ? "auto-neg on" : "auto-neg off";
+                        r.Add("Switch port speed", mau == 0 ? $"Not reported ({neg})"
+                            : MauTypes.TryGetValue(mau, out var m) ? $"{m} ({neg})" : $"Unlisted type {mau} ({neg})");
                     }
                     else if (oui == "00120F" && sub == 2 && l >= 7)
                     {
