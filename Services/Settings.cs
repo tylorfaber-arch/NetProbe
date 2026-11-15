@@ -14,6 +14,8 @@ public sealed class Settings
     public string ReportFolder { get; set; } = "";
     // Keep a timestamped capture + JSON report of every Discover / Port Health run in <report folder>\History.
     public bool KeepHistory { get; set; } = true;
+    // SNMP v2c read community for the faceplate (reads every port's link and VLANs). Empty = generic faceplate only.
+    public string SnmpCommunity { get; set; } = "public";
 
     public static string DefaultReportFolder =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "NetProbe");

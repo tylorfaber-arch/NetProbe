@@ -64,6 +64,14 @@ public partial class MainWindow : Window
         CheckUpdatesBox.IsChecked = _settings.CheckUpdatesOnLaunch;
         AutoDiscoverBox.IsChecked = _settings.AutoDiscoverOnLink;
         DiscoverSeconds.Text = _settings.DiscoverSeconds.ToString();
+        SnmpCommunityBox.Text = _settings.SnmpCommunity;
+        Faceplate.SelectedChanged += ShowFaceplatePort;
+        // the neighbor list sits inside the page's scroller: pass the mouse wheel up so the page scrolls
+        SwitchList.PreviewMouseWheel += (_, e) =>
+        {
+            e.Handled = true;
+            SwitchScroll.RaiseEvent(new System.Windows.Input.MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta) { RoutedEvent = MouseWheelEvent });
+        };
         ThemeBox.SelectedIndex = _settings.Theme switch { "Light" => 1, "Dark" => 2, _ => 0 };
         AboutText.Text =
             $"NetProbe {App.Version} - laptop network tester\n" +
@@ -573,6 +581,7 @@ public partial class MainWindow : Window
             ShowNeighbors();
             Status(_neighbors.Count > 0 ? $"Switch port found via {_neighbors[0].Protocol}." : "No switch heard (no external LLDP/CDP).");
             SaveHistory("switch", LinkDiscovery.LastCapture);
+            if (_neighbors.Count > 0 && SnmpCommunityBox.Text.Trim().Length > 0 && SnmpIpBox.Text.Trim().Length > 0) _ = ReadPortsAsync(auto: true);
         }
         catch (Exception ex)
         {
@@ -620,7 +629,93 @@ public partial class MainWindow : Window
             SwitchSummary.Text = App.IsAdmin ? "Plug into the switch port and click Discover." : "Switch discovery needs Administrator - click Restart as Admin.";
             SwitchHint.Text = "";
         }
+        UpdateFaceplateFromNeighbors();
         UpdateDashboard();
+    }
+
+    // ================================================================== switch faceplate
+
+    private SwitchFaceplate? _faceplate;
+    private string? _autoIp;            // IP we filled in from LLDP/CDP (replaced when a new switch is found)
+    private bool _readingPorts;
+
+    private void UpdateFaceplateFromNeighbors()
+    {
+        var n = _neighbors.FirstOrDefault();
+        if (n?.MgmtIp is { } ip && (SnmpIpBox.Text.Trim().Length == 0 || SnmpIpBox.Text.Trim() == _autoIp))
+            SnmpIpBox.Text = _autoIp = ip.Split(',')[0].Trim();
+
+        if (n != null)
+        {
+            // keep a full SNMP read of this same switch; otherwise draw the generic layout
+            if (_faceplate == null || _faceplate.Generic) SetFaceplate(SwitchPorts.FromNeighbor(n, _snap?.SpeedBps ?? 0));
+        }
+        else if (_faceplate == null || _faceplate.Generic) SetFaceplate(null);   // a full SNMP read stays until replaced
+    }
+
+    private void SetFaceplate(SwitchFaceplate? fp)
+    {
+        _faceplate = fp;
+        Faceplate.Plate = fp;
+        FaceplateTitle.Text = fp?.Title ?? "";
+        FaceplateInfo.Text = fp?.Source ??
+            "Discover the switch port to draw the switch, or enter the switch's IP and SNMP community and click Read all ports.";
+        if (fp != null) Faceplate.SelectLocal();
+        else ShowFaceplatePort(null);
+    }
+
+    private void ShowFaceplatePort(SwitchPort? p)
+    {
+        FaceplatePort.Visibility = p == null ? Visibility.Collapsed : Visibility.Visible;
+        FaceplatePort.Text = p?.Describe() ?? "";
+    }
+
+    private void FaceplateColor_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (Faceplate != null) Faceplate.ColorByVlan = FaceplateColorBox.SelectedIndex == 1;
+    }
+
+    private async void ReadPorts_Click(object sender, RoutedEventArgs e) => await ReadPortsAsync(auto: false);
+
+    private async Task ReadPortsAsync(bool auto)
+    {
+        if (_readingPorts) return;
+        var host = SnmpIpBox.Text.Trim();
+        var community = SnmpCommunityBox.Text.Trim();
+        if (community != _settings.SnmpCommunity) { _settings.SnmpCommunity = community; _settings.Save(); }
+        if (host.Length == 0 || community.Length == 0)
+        {
+            FaceplateInfo.Text = "Enter the switch's management IP and its SNMP read community, then click Read all ports.";
+            return;
+        }
+
+        _readingPorts = true;
+        ReadPortsBtn.IsEnabled = false;
+        var keep = _faceplate;
+        try
+        {
+            int port = 161;
+            if (host.Count(ch => ch == ':') == 1 && int.TryParse(host[(host.IndexOf(':') + 1)..], out var hp)) { port = hp; host = host[..host.IndexOf(':')]; }
+            if (!System.Net.IPAddress.TryParse(host, out var ip))
+                ip = (await System.Net.Dns.GetHostAddressesAsync(host)).First(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork);
+            var progress = new Progress<string>(s => FaceplateInfo.Text = s);
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            var fp = await SwitchPorts.ReadAsync(ip, community, _neighbors.FirstOrDefault(), _snap?.Mac, progress, cts.Token, port);
+            SetFaceplate(fp);
+            Status($"Read {fp.Ports.Count} switch ports from {ip}.");
+        }
+        catch (Exception ex)
+        {
+            SetFaceplate(keep);
+            var msg = ex is OperationCanceledException ? "The switch took too long to answer." : ex.Message;
+            FaceplateInfo.Text = (keep?.Generic == true ? keep.Source + "  " : "") + "SNMP: " + msg;
+            if (!auto) Status("Read all ports failed: " + msg);
+        }
+        finally
+        {
+            _readingPorts = false;
+            ReadPortsBtn.IsEnabled = true;
+        }
     }
 
     private void OpenCapture_Click(object sender, RoutedEventArgs e)
@@ -1059,6 +1154,23 @@ public partial class MainWindow : Window
             ShowNeighbors();
         }
         var prefix = Environment.GetEnvironmentVariable("NETPROBE_THEME") ?? "default";
+        if (Environment.GetEnvironmentVariable("NETPROBE_FAKE_SNMP") is { } agent)
+        {
+            // faceplate-only snapshot: generic layout from the capture, then a full read from a test SNMP agent
+            Nav.SelectedIndex = 2;
+            await Task.Delay(400);
+            SavePng(Path.Combine(dir, $"{prefix}-faceplate-generic.png"));
+            SnmpIpBox.Text = agent;
+            SnmpCommunityBox.Text = "public";
+            await ReadPortsAsync(auto: false);
+            await Task.Delay(400);
+            SavePng(Path.Combine(dir, $"{prefix}-faceplate-status.png"));
+            FaceplateColorBox.SelectedIndex = 1;
+            await Task.Delay(400);
+            SavePng(Path.Combine(dir, $"{prefix}-faceplate-vlan.png"));
+            Close();
+            return;
+        }
         if (Environment.GetEnvironmentVariable("NETPROBE_FAKE_HEALTH") is { } hp && File.Exists(hp))
         {
             _health = PortHealth.Analyze(hp, new HealthContext

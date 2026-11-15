@@ -33,6 +33,7 @@
 |---|---|
 | **Dashboard** | Link, IP/DHCP, Switch Port and Internet status at a glance, plus a live latency graph |
 | **Switch port discovery** | LLDP and Cisco CDP: switch name, port, VLAN, voice VLAN, management IP, PoE, speed |
+| **Switch faceplate** | Draws the switch front panel with your port highlighted. With the SNMP read community it shows every port's link, speed, untagged VLAN and tagged VLANs (works with any switch, including stacks) |
 | **Port health** | Flags loops, broadcast storms, spanning-tree changes, rogue DHCP servers, duplicate IPs, speed/duplex mismatch, port errors and link drops |
 | **Auto-run on plug-in** | Plug in a cable and the tests and switch discovery start on their own |
 | **Link / IP** | Speed, MAC, IP, gateway, DHCP server and lease, DNS, Wi-Fi signal and channel |
@@ -110,6 +111,8 @@ Any 2xx response counts as success. Optional extras a portal can support:
 |---|---|
 | `MainWindow.xaml(.cs)` | UI: dashboard and pages |
 | `Services/LinkDiscovery.cs` | pktmon capture + LLDP/CDP decoder |
+| `Services/Snmp.cs`, `Services/SwitchPorts.cs` | Built-in SNMPv2c client; reads every port's link, speed and VLANs |
+| `Controls/FaceplateView.cs` | Switch faceplate drawing (any switch, no images) |
 | `Services/AdapterInfo.cs` | Link / IP / DHCP / Wi-Fi details |
 | `Services/ConnectivityTests.cs` | Gateway, DNS, internet, captive portal checks |
 | `Services/NetTools.cs` | Ping, traceroute, DNS lookup, port check |
