@@ -48,7 +48,8 @@ public partial class MainWindow : Window
         _monitor.Updated += () => Dispatcher.BeginInvoke(OnLatency);
         _monitor.Start();
 
-        AdminBadge.Background = App.IsAdmin ? B("PassBrush") : B("WarnBrush");
+        AdminBadge.Background = App.IsAdmin ? B("PassTint") : B("WarnTint");
+        AdminText.Foreground = App.IsAdmin ? B("PassBrush") : B("WarnBrush");
         AdminText.Text = App.IsAdmin ? "Administrator" : "Limited mode";
         ElevateButton.Visibility = App.IsAdmin ? Visibility.Collapsed : Visibility.Visible;
 
@@ -251,7 +252,7 @@ public partial class MainWindow : Window
         if (s.IsUp)
         {
             SetBar(LinkBar, "PassBrush");
-            LinkBig.Text = $"UP  ·  {s.SpeedText}";
+            LinkBig.Text = $"Up · {s.SpeedText}";
             if (s.IsWireless)
             {
                 string W(string k) => s.Wifi.FirstOrDefault(w => w.Key == "Wi-Fi " + k)?.Value ?? "?";
@@ -262,7 +263,7 @@ public partial class MainWindow : Window
         else
         {
             SetBar(LinkBar, "FailBrush");
-            LinkBig.Text = "NO LINK";
+            LinkBig.Text = "No link";
             lines.Add(s.IsWireless ? "Not connected to Wi-Fi." : "Check the cable / wall jack / switch port.");
         }
         LinkSub.Text = string.Join("\n", lines);
@@ -300,9 +301,9 @@ public partial class MainWindow : Window
         {
             var n = _neighbors[0];
             SetBar(SwBar, "PassBrush");
-            SwBig.Text = $"{n.SwitchName}  ·  {n.Port}";
+            SwBig.Text = $"{n.SwitchName} · {n.Port}";
             var vl = $"VLAN {n.Vlan ?? "?"}";
-            if (n.VoiceVlan != null) vl += $"  ·  Voice VLAN {n.VoiceVlan}";
+            if (n.VoiceVlan != null) vl += $" · Voice VLAN {n.VoiceVlan}";
             lines.Add(vl);
             if (n.Get("Port Description") is { } pd && pd != n.Port) lines.Add("Port desc: " + pd);
             if (n.MgmtIp != null) lines.Add("Switch IP " + n.MgmtIp);
@@ -351,7 +352,7 @@ public partial class MainWindow : Window
         if (_testing)
         {
             SetBar(InetBar, "InfoBrush");
-            InetBig.Text = $"Testing...  {_tests.Count} / {_testTotal}";
+            InetBig.Text = $"Testing... {_tests.Count} of {_testTotal}";
             foreach (var t in _tests.TakeLast(_currentTest != null ? 3 : 4)) lines.Add(ResultLine(t));
             if (_currentTest != null) lines.Add($"▸  {_currentTest}...");
         }
@@ -365,7 +366,7 @@ public partial class MainWindow : Window
         {
             int fail = _tests.Count(t => t.Sev == Sev.Fail), warn = _tests.Count(t => t.Sev == Sev.Warn);
             bool online = _tests.Any(t => t.Sev == Sev.Pass && (t.Name.StartsWith("HTTPS") || t.Name.StartsWith("Ping internet")));
-            InetBig.Text = fail + warn == 0 ? "ONLINE" : online ? "ONLINE · issues" : "OFFLINE";
+            InetBig.Text = fail + warn == 0 ? "Online" : online ? "Online, with issues" : "Offline";
             SetBar(InetBar, fail + warn == 0 ? "PassBrush" : online ? "WarnBrush" : "FailBrush");
             int passed = _tests.Count(t => t.Sev == Sev.Pass);
             lines.Add($"{passed} of {_tests.Count(t => t.Sev != Sev.Info)} checks passed" + (_lastTests is { } lt ? $" · {lt:t}" : ""));

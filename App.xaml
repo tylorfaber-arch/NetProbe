@@ -1,6 +1,7 @@
 <Application x:Class="NetProbe.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:NetProbe.Controls"
              ThemeMode="System"
              ShutdownMode="OnMainWindowClose">
     <Application.Resources>
@@ -10,7 +11,16 @@
         <SolidColorBrush x:Key="NeutralBrush" Color="#8B949E" />
         <SolidColorBrush x:Key="InfoBrush" Color="#3B82F6" />
 
+        <!-- soft fills behind status icons and pills (readable on light and dark) -->
+        <SolidColorBrush x:Key="PassTint" Color="#262EA043" />
+        <SolidColorBrush x:Key="FailTint" Color="#26E5534B" />
+        <SolidColorBrush x:Key="WarnTint" Color="#2ED29922" />
+        <SolidColorBrush x:Key="NeutralTint" Color="#268B949E" />
+        <SolidColorBrush x:Key="InfoTint" Color="#263B82F6" />
+
         <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+
+        <c:NotLastToVisibility x:Key="NotLast" />
 
         <!-- Colors a TextBlock by the Sev of its DataContext -->
         <Style x:Key="SevText" TargetType="TextBlock">
@@ -22,40 +32,82 @@
             </Style.Triggers>
         </Style>
 
+        <!-- Status icon (check / cross / warning / info) colored by Sev -->
+        <Style x:Key="SevGlyph" TargetType="TextBlock" BasedOn="{StaticResource SevText}">
+            <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Text" Value="&#xE946;" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Sev}" Value="Pass"><Setter Property="Text" Value="&#xE73E;" /></DataTrigger>
+                <DataTrigger Binding="{Binding Sev}" Value="Fail"><Setter Property="Text" Value="&#xE711;" /></DataTrigger>
+                <DataTrigger Binding="{Binding Sev}" Value="Warn"><Setter Property="Text" Value="&#xE7BA;" /></DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Soft circle / pill behind a status icon or badge, tinted by Sev -->
+        <Style x:Key="SevTint" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource NeutralTint}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Sev}" Value="Pass"><Setter Property="Background" Value="{StaticResource PassTint}" /></DataTrigger>
+                <DataTrigger Binding="{Binding Sev}" Value="Fail"><Setter Property="Background" Value="{StaticResource FailTint}" /></DataTrigger>
+                <DataTrigger Binding="{Binding Sev}" Value="Warn"><Setter Property="Background" Value="{StaticResource WarnTint}" /></DataTrigger>
+                <DataTrigger Binding="{Binding Sev}" Value="Info"><Setter Property="Background" Value="{StaticResource InfoTint}" /></DataTrigger>
+            </Style.Triggers>
+        </Style>
+
         <Style x:Key="Card" TargetType="Border">
             <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Padding" Value="18,14" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="20,16" />
             <Setter Property="Margin" Value="6" />
         </Style>
 
+        <!-- small muted heading at the top of a card -->
         <Style x:Key="CardTitle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Opacity" Value="0.7" />
-            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="Opacity" Value="0.6" />
+            <Setter Property="Margin" Value="0,0,0,8" />
         </Style>
 
         <Style x:Key="CardBig" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="26" />
+            <Setter Property="FontSize" Value="22" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="TextTrimming" Value="CharacterEllipsis" />
         </Style>
 
         <Style x:Key="CardSub" TargetType="TextBlock">
             <Setter Property="FontSize" Value="13" />
-            <Setter Property="Opacity" Value="0.85" />
-            <Setter Property="Margin" Value="0,6,0,0" />
-            <Setter Property="LineHeight" Value="20" />
+            <Setter Property="Opacity" Value="0.7" />
+            <Setter Property="Margin" Value="0,8,0,0" />
+            <Setter Property="LineHeight" Value="22" />
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
 
+        <!-- secondary line under a primary one -->
+        <Style x:Key="Muted" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Opacity" Value="0.65" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <!-- 8px status dot beside a card title -->
+        <Style x:Key="StatusDot" TargetType="Border">
+            <Setter Property="Width" Value="8" />
+            <Setter Property="Height" Value="8" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Margin" Value="0,1,8,8" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
         <Style x:Key="PageTitle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="24" />
+            <Setter Property="FontSize" Value="22" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Margin" Value="6,0,0,10" />
+            <Setter Property="Margin" Value="6,2,0,12" />
         </Style>
 
         <Style x:Key="Toolbar" TargetType="WrapPanel">
